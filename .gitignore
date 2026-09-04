@@ -117,3 +117,6 @@ lfs/
 /NINA/External
 /Touch-N-Stars
 /pinsdaemon
+
+# Docker bind-mount data directories (docker-compose.yml)
+/data/

@@ -1,0 +1,6 @@
+# pinsdaemon privilege delegation inside the pins container. Only the
+# operations that have a working implementation in the container are listed
+# (PHD2 control through the systemctl shim, ASTAP star database handling).
+sysupdate-api ALL=(root) NOPASSWD: /usr/bin/systemctl
+sysupdate-api ALL=(root) NOPASSWD: /usr/local/bin/install-astap-star-database.sh *
+sysupdate-api ALL=(root) NOPASSWD: /usr/local/bin/ensure-astap-data-links.sh
