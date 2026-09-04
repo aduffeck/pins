@@ -1,0 +1,59 @@
+# PI 'N' Stars (pins) in a container. See docker/README.md.
+#
+#   docker compose build
+#   docker compose up -d
+#   open http://<host>:5000   (Touch-N-Stars web UI)
+
+services:
+  pins:
+    build:
+      context: .
+      # RUN steps need internet access (source downloads, NuGet, npm). Host
+      # networking works on every Docker setup, including hosts where the
+      # default bridge network has no outbound connectivity.
+      network: host
+      args:
+        # Ubuntu release of the runtime image and the native build stages.
+        UBUNTU_VERSION: "24.04"
+        # Plugins built into the image (see docker/README.md for the list).
+        BUILD_PLUGINS: "ninaapi touch-n-stars"
+        # UID/GID of the in-container user; match the owner of a bind-mounted home.
+        PINS_UID: "1000"
+        PINS_GID: "1000"
+    image: pins:local
+    container_name: pins
+    restart: unless-stopped
+    # Time for a clean shutdown: pins disconnects equipment and writes its
+    # settings, PHD2 is asked to close and flush its configuration. The
+    # compose default of 10 s can cut that short and lose settings.
+    stop_grace_period: 90s
+    # Host networking: exposes 4782 (core), 1888 (ninaAPI), 5000 (Touch-N-Stars),
+    # 7624 (indiserver), 4400 (PHD2) and 8000 (pinsdaemon) directly, and lets
+    # mDNS/Alpaca/INDI discovery reach the LAN. Replace with a `ports:` mapping
+   # if you prefer bridge networking.
+    network_mode: host
+    environment:
+      TZ: Europe/Berlin
+      # Start PHD2 (on the virtual X display) together with the container.
+      PHD2_AUTOSTART: "true"
+      # pinsdaemon system management API on port 8000.
+      PINSDAEMON_AUTOSTART: "true"
+      # Bearer token expected by pinsdaemon; the image default matches the
+      # token shipped in the pinsdaemon Debian package.
+      # PINSDAEMON_API_TOKEN: "change-me"
+    volumes:
+      # Settings, profiles, logs, plugins, PHD2/INDI/driver configs, ASTAP
+      # databases and the sky map cache: everything under the container's
+      # home directory, kept in ./data/home on the host.
+      - ./data/home:/home/pins
+      # Captured images (the default image folder of a pins profile).
+      - ./data/images:/home/pins/Documents/N.I.N.A
+      # USB cameras, filter wheels, focusers: a bind mount (not a `devices:`
+      # entry) so that devices plugged in after the container started are
+      # visible too. `privileged` grants access to them; the image makes the
+      # nodes of known astronomy vendors accessible to the pins user.
+      - /dev/bus/usb:/dev/bus/usb
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0      # serial mounts / accessories present at start
+    privileged: true
+
