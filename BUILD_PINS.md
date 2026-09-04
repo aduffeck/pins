@@ -636,3 +636,20 @@ If you need the ASTAP CLI capability:
     sudo cp astap_cli /usr/local/bin/
     sudo chmod +x /usr/local/bin/astap_cli
     ```
+
+---
+
+## Docker
+
+A container build of the complete server (core application, External bundle,
+OpenCvSharp, INDI and the indi-3rdparty drivers, PHD2, pinsdaemon, ASTAP,
+optional plugins; star databases and the sky map cache are downloaded on
+demand) is provided by the `Dockerfile` in the repository root:
+
+```bash
+docker build --network=host -t pins:local .
+docker compose up -d
+```
+
+See [`docker/README.md`](docker/README.md) for build arguments, volumes,
+ports, hardware access and how it relates to the Debian package build above.

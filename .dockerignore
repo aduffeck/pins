@@ -1,0 +1,23 @@
+# Docker build context for pins (see Dockerfile / docker/README.md).
+.git
+.github
+.codex
+.vs
+.idea
+**/bin/
+**/obj/
+**/node_modules/
+**/frontend-build/
+artifacts/
+publish/
+docs/
+NINA.Docs/
+NINA.Test/
+NINA.Benchmark/
+NINA.Setup/
+NINA.SetupBundle/
+# Populated inside the build (external stage); never taken from the host checkout.
+NINA/External/
+# Top-level frontend submodule; the Touch-N-Stars web app is built in the frontend stage.
+Touch-N-Stars/
+*.log
