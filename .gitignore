@@ -118,3 +118,6 @@ lfs/
 /Touch-N-Stars
 /pinsdaemon
 .claude
+
+# Docker bind-mount data directories (docker-compose.yml)
+/data/
