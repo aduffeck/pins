@@ -294,6 +294,8 @@ COPY --chmod=755 docker/scripts/install-astap-db.sh /usr/local/bin/pins-install-
 COPY --chmod=755 docker/scripts/fetch-skymap.sh /usr/local/bin/pins-download-skymap
 COPY --chmod=755 docker/systemctl-shim.sh /usr/local/lib/pins/systemctl-shim
 COPY --chmod=440 docker/sudoers-pinsdaemon /etc/sudoers.d/pinsdaemon
+COPY --chmod=755 docker/power-shim.sh /usr/local/lib/pins/power-shim
+COPY --chmod=440 docker/sudoers-pins /etc/sudoers.d/pins
 COPY docker/supervisord.conf /etc/pins/supervisord.conf
 COPY --from=indi /indi-root/ /
 COPY --from=indi3p /indi3p-root/ /
@@ -309,13 +311,19 @@ COPY --from=external /runtime-packages.txt /tmp/pins-deps/external.txt
 # health check), USB access for the vendor SDKs, libgphoto2 for DSLR cameras
 # (the SDK wrapper loads the unversioned library names, which only the -dev
 # packages provide, hence the symlinks), hidapi for the Oasis SDK (loaded the
-# same way; without it the Oasis library aborts the process on first use), the
+# same way; without it the Oasis library aborts the process on first use),
+# cfitsio (FITS reading and writing) and LibRaw (DSLR raw conversion), which
+# pins dlopens by their unversioned names as well, the
 # process supervisor, inotify-tools for the USB permission helper, unzip for
 # the sky map download helper, a virtual X
 # server and fonts for PHD2, Python and sudo for pinsdaemon, and everything
 # the from-source components were linked against (lists generated in their
 # build stages). Package names that carry a version or t64 suffix are looked
 # up so the same Dockerfile works across Ubuntu releases.
+# There is no systemd in the container: systemctl becomes a shim onto
+# supervisord (PHD2 control by pinsdaemon) and shutdown/poweroff/reboot
+# become the host power control shim (docker/power-shim.sh, used by the
+# Touch-N-Stars Shutdown/Restart buttons); the originals are diverted.
 RUN set -eu; \
     apt-get update; \
     pick() { apt-cache search --names-only "$1" | awk '{print $1}' | sort -V | tail -n1; }; \
@@ -324,13 +332,20 @@ RUN set -eu; \
       supervisor xvfb fonts-dejavu-core python3 sudo libhidapi-hidraw0 libhidapi-libusb0 inotify-tools unzip \
       "$(pick '^libicu[0-9]+$')" "$(pick '^libssl3(t64)?$')" \
       "$(pick '^libgphoto2-6(t64)?$')" "$(pick '^libgphoto2-port12(t64)?$')" \
+      "$(pick '^libcfitsio[0-9]+(t64)?$')" "$(pick '^libraw[0-9]+(t64)?$')" \
       $(cat /tmp/pins-deps/*.txt | sort -u | tr '\n' ' ') ${EXTRA_PACKAGES}; \
     rm -rf /var/lib/apt/lists/* /tmp/pins-deps; \
-    for so in libgphoto2.so.6 libgphoto2_port.so.12 libhidapi-hidraw.so.0 libhidapi-libusb.so.0; do \
-      p="$(ls /usr/lib/*/"$so" 2>/dev/null | head -n1)"; \
-      [ -n "$p" ] && ln -sfn "$(basename "$p")" "${p%.so.*}.so"; \
+    unversioned="libgphoto2 libgphoto2_port libhidapi-hidraw libhidapi-libusb libcfitsio libraw"; \
+    for lib in $unversioned; do \
+      p="$(ls /usr/lib/*/"$lib".so.[0-9]* 2>/dev/null | sort -V | head -n1)"; \
+      [ -n "$p" ] || { echo "runtime library $lib is not installed" >&2; exit 1; }; \
+      ln -sfn "$(basename "$p")" "$(dirname "$p")/$lib.so"; \
     done; \
     ldconfig; \
+    for lib in $unversioned; do \
+      python3 -c 'import ctypes, sys; ctypes.CDLL(sys.argv[1])' "$lib.so" \
+        || { echo "cannot dlopen $lib.so" >&2; exit 1; }; \
+    done; \
     if getent passwd "${PINS_UID}" >/dev/null; then userdel -r "$(getent passwd "${PINS_UID}" | cut -d: -f1)"; fi; \
     if getent group "${PINS_GID}" >/dev/null; then groupdel "$(getent group "${PINS_GID}" | cut -d: -f1)"; fi; \
     groupadd -g "${PINS_GID}" pins; \
@@ -343,7 +358,11 @@ RUN set -eu; \
     chown -R pins:pins /home/pins; \
     cp /etc/pins/supervisord.conf /etc/supervisor/supervisord.conf; \
     if [ -e /usr/bin/systemctl ]; then dpkg-divert --local --rename --add /usr/bin/systemctl; fi; \
-    install -m 755 /usr/local/lib/pins/systemctl-shim /usr/bin/systemctl
+    install -m 755 /usr/local/lib/pins/systemctl-shim /usr/bin/systemctl; \
+    for c in shutdown poweroff reboot; do \
+      if [ -e "/usr/sbin/$c" ] || [ -L "/usr/sbin/$c" ]; then dpkg-divert --local --rename --add "/usr/sbin/$c"; fi; \
+      install -m 755 /usr/local/lib/pins/power-shim "/usr/sbin/$c"; \
+    done
 
 # pinsdaemon: application + venv, and its helper scripts where the Debian
 # package installs them. Only the systemctl shim (PHD2 control) and the ASTAP
