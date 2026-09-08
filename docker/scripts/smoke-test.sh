@@ -78,6 +78,11 @@ if in_container 'test -x /usr/bin/supervisorctl' 2>/dev/null; then
   fi
 fi
 
+# Host power shim (Touch-N-Stars Shutdown/Restart): the pins user may run it
+# through sudo, and without the host's D-Bus socket (not mounted here) it must
+# refuse with a message instead of doing anything.
+check in_container 'out=$(runuser -u pins -- sudo -n /usr/sbin/shutdown -h now 2>&1); [ $? -eq 1 ] && echo "$out" | grep -q "not available"'
+
 if in_container 'test -x /usr/local/bin/astap_cli' 2>/dev/null; then
   check in_container 'astap_cli -h >/dev/null 2>&1 || astap_cli 2>&1 | grep -qi astap'
   check in_container 'test -d /usr/share/astap/data/ && test -w /home/pins/.local/share/astap'
