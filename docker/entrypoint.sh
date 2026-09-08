@@ -76,6 +76,23 @@ if [ "$as_root" -eq 1 ]; then
   # USB device access for the pins user (also kept up to date by the
   # supervised watcher).
   /usr/local/bin/pins-usb-permissions once || true
+  # USB transfer buffer for large-sensor USB3 cameras: the ZWO SDK fails to
+  # download frames bigger than usbfs_memory_mb (kernel default 16 MB; a full
+  # 16 MP RAW16 frame is 32 MB) and the exposure then times out in pins. The
+  # parameter is host-global; a privileged container can write it (sysfs is
+  # mounted read-write there), otherwise it has to be set on the host.
+  usbfs=/sys/module/usbcore/parameters/usbfs_memory_mb
+  want="${PINS_USBFS_MEMORY_MB:-256}"
+  if [ -f "$usbfs" ] && [ "$want" -gt 0 ] 2>/dev/null; then
+    have="$(cat "$usbfs" 2>/dev/null || echo 0)"
+    if [ "$have" -lt "$want" ]; then
+      if echo "$want" 2>/dev/null > "$usbfs"; then
+        echo "[pins] usbfs_memory_mb raised from $have to $want MB"
+      else
+        echo "[pins] usbfs_memory_mb is $have MB and cannot be changed from here; frames of large USB3 cameras may fail to download. On the host: echo $want > $usbfs"
+      fi
+    fi
+  fi
   # PHD2 "enabled" state consulted by the systemctl shim (pinsdaemon).
   if [ "${PHD2_AUTOSTART:-true}" = "true" ]; then touch /run/pins/phd2.enabled; else rm -f /run/pins/phd2.enabled; fi
   chmod 755 /run/pins

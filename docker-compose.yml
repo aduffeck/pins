@@ -53,6 +53,12 @@ services:
       # visible too. `privileged` grants access to them; the image makes the
       # nodes of known astronomy vendors accessible to the pins user.
       - /dev/bus/usb:/dev/bus/usb
+      # Host power control: the Touch-N-Stars "Shutdown" and "Restart" buttons
+      # ask the host's logind over its system D-Bus socket to power off or
+      # reboot the machine (pins and PHD2 are stopped cleanly first; needs
+      # `privileged`). Remove this line to leave the host alone; the buttons
+      # then report an error. See docker/README.md, "Host shutdown and reboot".
+      - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro
     devices:
       - /dev/ttyUSB0:/dev/ttyUSB0      # serial mounts / accessories present at start
     privileged: true
