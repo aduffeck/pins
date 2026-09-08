@@ -76,7 +76,11 @@ The vendor libraries from indi-3rdparty (for example `libSVBCameraSDK.so`,
 falls back to the system library search path when a library is not in
 `External/`. The Oasis (Astroasis) SDK expects hidapi to be loaded first; the
 image ships `libhidapi-hidraw0` with the unversioned library name the pins
-loader asks for, so those devices work as well.
+loader asks for, so those devices work as well. The same applies to cfitsio
+(FITS reading and writing), LibRaw (DSLR raw conversion) and libgphoto2: pins
+dlopens `libcfitsio.so`, `libraw.so`, `libgphoto2.so` by those bare names,
+which Ubuntu only ships in the `-dev` packages, so the image links them to the
+versioned runtime libraries and verifies at build time that each one loads.
 
 The `linux-x64` image adds up to about 2.8 GB of layers: 1 GB runtime
 libraries (wxWidgets/GTK, OpenCV, ffmpeg, vendor SDKs), 0.6 GB 3rd-party
@@ -101,6 +105,16 @@ the databases without further configuration and pinsdaemon's own database
 installer (`/packages/astap/stardatabases/install`, used by Touch-N-Stars)
 stores them in the same place. The sky map cache goes to
 `~/.local/share/NINA/FramingAssistantCache`, the path pins uses by default.
+
+`docker exec` runs the helpers as root; both hand the downloaded files to the
+`pins` user afterwards, because pins writes the cache index (and adds images
+to the cache) and pinsdaemon replaces databases. A cache downloaded with an
+earlier image is owned by root and read-only for pins: the cached images
+still render, but the index cannot be updated. Fix it once with:
+
+```bash
+docker exec pins chown -R pins:pins /home/pins/.local/share/NINA/FramingAssistantCache
+```
 
 ## Build arguments
 
@@ -162,7 +176,8 @@ Environment variables: `PHD2_AUTOSTART`, `PINS_DISPLAY` (with host
 networking the X socket name is shared with the host, so the default `:99`
 avoids a desktop session on `:0`), `PINSDAEMON_AUTOSTART`,
 `PINSDAEMON_API_TOKEN` (bearer token; the default is the token the pinsdaemon
-Debian package ships), `TZ`.
+Debian package ships), `PINS_USBFS_MEMORY_MB` (USB transfer buffer the
+entrypoint sets on a privileged container, see "USB devices"), `TZ`.
 
 There is no systemd in the container. pinsdaemon manages PHD2 through
 `systemctl`, so `/usr/bin/systemctl` is a small shim that maps the `phd2`
@@ -172,7 +187,9 @@ scripts (`docker/sudoers-pinsdaemon`). pinsdaemon endpoints that need the Pi
 operating system (system upgrade, Wi-Fi, hotspot, Samba, localisation, time
 setting, power/temperature readings, firmware installation) do not work in
 the container and return errors; `/health`, PHD2 status/control, the ASTAP
-database listing and the plugin/INDI package listings do.
+database listing and the plugin/INDI package listings do. The Touch-N-Stars
+"Shutdown" and "Restart" buttons act on the host machine through another
+shim; see "Host shutdown and reboot".
 
 PHD2 keeps its profiles in `/home/pins/.phd2` (on the volume). Its window is
 not visible anywhere; use the Touch-N-Stars PHD2 pages or the server API.
@@ -231,6 +248,8 @@ configuration, instead of being killed by a signal. `docker-compose.yml` sets
 `stop_grace_period: 90s` for that; with `docker run`, pass `--stop-timeout 90`
 or use `docker stop -t 90`. Killing the container (`docker kill`, a 10 s
 default timeout, a power cut) loses the settings changed since the last save.
+The Touch-N-Stars "Shutdown" and "Restart" buttons stop pins and PHD2 the
+same way before the host goes down (see "Host shutdown and reboot").
 
 Ports: 4782 (core SignalR hubs), 1888 (ninaAPI), 5000 (Touch-N-Stars web UI),
 7624 (indiserver), 4400 (PHD2 server API), 8000 (pinsdaemon). Every service
@@ -269,15 +288,64 @@ docker run -d --name pins --network host --stop-timeout 90 \
   QHY, ToupTek, Player One, SVBony, Atik, ...). This changes the mode of the
   host's node, the same effect the vendor udev rule would have on the host.
   Alternatively install those rules on the host.
-- ZWO cameras want a larger USB transfer buffer:
-  `/sys/module/usbcore/parameters/usbfs_memory_mb` should be at least 200 on
-  the host (their udev rule sets it; `usbcore.usbfs_memory_mb=256` on the
-  kernel command line makes it permanent).
+- Large-sensor USB3 cameras need a larger USB transfer buffer: the ZWO SDK
+  cannot download frames bigger than
+  `/sys/module/usbcore/parameters/usbfs_memory_mb` (kernel default 16 MB; a
+  full RAW16 frame of a 16 MP camera is 32 MB), and the exposure then ends in
+  "Camera Timeout - Camera did not set image as ready". The entrypoint raises
+  the value to `PINS_USBFS_MEMORY_MB` (default 256, `0` leaves it alone) when
+  the container is privileged, since the parameter is host-global and only
+  writable with a read-write sysfs. Otherwise set it on the host
+  (`usbcore.usbfs_memory_mb=256` on the kernel command line makes it
+  permanent); the container log says so at start.
 - Serial devices present at start can be passed with `--device /dev/ttyUSB0`
   (`pins` is in `dialout`); for serial hotplug bind-mount `/dev` instead.
 
 INDI drivers and PHD2 run inside the container, so their USB devices are
 covered by the same setup.
+
+## Host shutdown and reboot
+
+The "Shutdown" and "Restart" buttons in Touch-N-Stars run `sudo shutdown -h now`
+and `sudo shutdown -r now` in the pins process. In the container they act on
+the host machine, like on a Raspberry Pi installation: `/usr/sbin/shutdown`
+(also `poweroff` and `reboot`) is a shim (`docker/power-shim.sh`) that asks
+the host's logind over the host's system D-Bus socket to power off or reboot.
+For that the socket must be mounted and the container must be privileged
+(Docker's default AppArmor profile blocks D-Bus); `docker-compose.yml` does
+both.
+
+```bash
+docker run -d --name pins --network host --stop-timeout 90 \
+  -v "$PWD/data/home:/home/pins" -v "$PWD/data/images:/home/pins/Documents/N.I.N.A" \
+  --privileged -v /dev/bus/usb:/dev/bus/usb \
+  -v /run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro \
+  pins:local
+```
+
+Before the host goes down, the shim stops `pins` and `phd2` through
+supervisord so that they write their settings (see "Where settings live"):
+when the host shuts down, the Docker daemon gives containers only its own
+shutdown timeout (15 s by default), which would cut the 60 s clean stop
+short. The command returns at once and the stop runs detached, so the
+button's request still gets its reply; progress is written to the container
+log (`[pins-power] ...`). After a reboot Docker starts the container again
+(`restart: unless-stopped`).
+
+The `pins` user may run exactly `shutdown -h now` and `shutdown -r now` as
+root (`docker/sudoers-pins`). Without the socket, or in an unprivileged
+container, the buttons fail with an error in the pins log instead of doing
+nothing (`host power control is not available: ...`). To check a setup
+without stopping anything:
+
+```bash
+docker exec pins shutdown -h now --dry-run
+```
+
+Limitations: a Docker daemon with user namespace remapping maps the
+container's root to an unprivileged host user, and logind (polkit) then
+refuses the call; a host without systemd-logind cannot be controlled this
+way; delayed shutdowns (`shutdown -h +5`) and cancelling are not supported.
 
 ## Extending the image
 
@@ -296,8 +364,9 @@ in "Downloading data".
 `docker/scripts/smoke-test.sh [IMAGE]` starts a throwaway container with host
 networking, waits for the core server, and checks `indiserver`, the plugin
 folder, the ninaAPI version endpoint, the Touch-N-Stars page, the supervised
-services, pinsdaemon's health endpoint, PHD2's port, ASTAP and the download
-helpers. It prints the error lines of the application log and removes the
+services, pinsdaemon's health endpoint, PHD2's port, ASTAP, the download
+helpers and that the host power shim refuses cleanly without the D-Bus
+socket. It prints the error lines of the application log and removes the
 container afterwards.
 
 ## Multi-architecture
