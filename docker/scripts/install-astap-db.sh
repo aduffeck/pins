@@ -6,12 +6,19 @@
 # directory the CLI searches) point into the data volume, so a database
 # installed here survives container re-creation.
 #
+# Started through `docker exec` the script runs as root; the databases are
+# then handed to the pins user so that pins and pinsdaemon can replace or
+# remove them later.
+#
 # Usage: pins-install-astap-db ID [ID ...]      (d05, d20, d50, d80, g05, w08, ...)
-# Env:   ASTAP_DATA_DIR (default /home/pins/.local/share/astap)
+# Env:   ASTAP_DATA_DIR    (default /home/pins/.local/share/astap)
+#        ASTAP_DB_BASE_URL (SourceForge folder holding the .deb files)
+#        PINS_DATA_OWNER   user that owns the databases when run as root (pins)
 set -eu
 
 data_dir="${ASTAP_DATA_DIR:-/home/pins/.local/share/astap}"
-base="https://sourceforge.net/projects/astap-program/files/star_databases"
+base="${ASTAP_DB_BASE_URL:-https://sourceforge.net/projects/astap-program/files/star_databases}"
+owner="${PINS_DATA_OWNER:-pins}"
 
 [ $# -gt 0 ] || { echo "usage: pins-install-astap-db ID [ID ...]   (for example: d50, d05, d20, g05, w08)" >&2; exit 2; }
 
@@ -35,5 +42,9 @@ for id in "$@"; do
   rm -f "$tmp/$file"
   echo "Installed $count files of database $id into $data_dir"
 done
+
+if [ "$(id -u)" -eq 0 ] && id "$owner" >/dev/null 2>&1; then
+  chown -R "$owner:$(id -gn "$owner")" "$data_dir"
+fi
 
 echo "ASTAP databases present: $(ls "$data_dir" | sed -E 's/_.*//' | sort -u | tr '\n' ' ')"

@@ -1,0 +1,8 @@
+# Host power control for the pins user inside the pins container. The
+# Touch-N-Stars "Shutdown" and "Restart" buttons run `sudo shutdown -h now`
+# and `sudo shutdown -r now` in the pins process; /usr/sbin/shutdown is the
+# shim docker/power-shim.sh, which asks the host's logind over the mounted
+# system D-Bus socket (see docker/README.md, "Host shutdown and reboot").
+# The --dry-run forms only check the setup.
+pins ALL=(root) NOPASSWD: /usr/sbin/shutdown -h now, /usr/sbin/shutdown -r now
+pins ALL=(root) NOPASSWD: /usr/sbin/shutdown -h now --dry-run, /usr/sbin/shutdown -r now --dry-run
