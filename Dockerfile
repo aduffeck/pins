@@ -79,7 +79,7 @@ RUN git clone --depth 1 --branch "${OPENCVSHARP_VERSION}" https://github.com/shi
 # indi: INDI server, client library and core drivers from source
 ############################################################################
 FROM ubuntu:${UBUNTU_VERSION} AS indi
-ARG INDI_VERSION=2.1.9
+ARG INDI_VERSION=2.2.4.2
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
@@ -98,6 +98,7 @@ RUN git clone --depth 1 --branch "v${INDI_VERSION}" https://github.com/indilib/i
       -D INDI_BUILD_QT_CLIENT=OFF -D INDI_BUILD_UNITTESTS=OFF -D INDI_BUILD_INTEGTESTS=OFF \
       -D INDI_BUILD_EXAMPLES=OFF -D INDI_BUILD_STATIC=OFF \
       -D CMAKE_DISABLE_FIND_PACKAGE_LibXISF=TRUE \
+      -D FIX_WARNINGS=OFF \
  && cmake --build indi-build \
  && DESTDIR=/indi-root cmake --install indi-build \
  && rm -rf /indi-root/usr/include /indi-root/usr/lib/pkgconfig /indi-root/usr/lib/cmake \
@@ -114,7 +115,7 @@ RUN cmake --install indi-build >/dev/null && ldconfig
 # SVBony, ...) and drivers
 ############################################################################
 FROM indi AS indi3p
-ARG INDI_VERSION=2.1.9
+ARG INDI_VERSION=2.2.4.1
 # Drivers that cannot be built on this platform (missing packages in Ubuntu or
 # Raspberry Pi specific hardware). Determined by configuring the full set.
 ARG INDI_3RDPARTY_DISABLE="WITH_AHP_XC WITH_AHP_GT WITH_GPIO WITH_LIBCAMERA"
