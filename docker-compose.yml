@@ -16,7 +16,7 @@ services:
         # Ubuntu release of the runtime image and the native build stages.
         UBUNTU_VERSION: "24.04"
         # Plugins built into the image (see docker/README.md for the list).
-        BUILD_PLUGINS: "ninaapi touch-n-stars"
+        BUILD_PLUGINS: "ninaapi touch-n-stars polaralignment joko livestack nightsummary"
         # UID/GID of the in-container user; match the owner of a bind-mounted home.
         PINS_UID: "1000"
         PINS_GID: "1000"
