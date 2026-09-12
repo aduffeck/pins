@@ -233,7 +233,7 @@ RUN /scripts/fetch-astap.sh /astap
 # frontend: Touch-N-Stars web app (only when the touch-n-stars plugin is built)
 ############################################################################
 FROM ${NODE_IMAGE} AS frontend
-ARG BUILD_PLUGINS="ninaapi touch-n-stars"
+ARG BUILD_PLUGINS="ninaapi touch-n-stars polaralignment joko livestack nightsummary"
 ARG TNS_FRONTEND_REPO=https://github.com/Touch-N-Stars/Touch-N-Stars.git
 ARG TNS_FRONTEND_BRANCH=develop
 WORKDIR /frontend
@@ -272,7 +272,7 @@ RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
 # plugins: optional plugin builds against the core above
 ############################################################################
 FROM build AS plugins
-ARG BUILD_PLUGINS="ninaapi touch-n-stars"
+ARG BUILD_PLUGINS="ninaapi touch-n-stars polaralignment joko livestack nightsummary"
 COPY --from=frontend /frontend/dist /frontend-dist
 RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
     docker/scripts/build-plugins.sh /out/pins /out/plugins "${BUILD_PLUGINS}"

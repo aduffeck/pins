@@ -30,6 +30,7 @@ plugin_spec() {
     joko)           echo "https://github.com/nitr57/joko.nina.plugins||joko.nina.plugins|Joko.NINA.Plugins/Joko.NINA.Plugins.HocusFocus/Joko.NINA.Plugins.HocusFocus.csproj|joko.nina.plugins|" ;;
     livestack)      echo "https://github.com/nitr57/nina.plugin.livestack||LiveStack|nina.plugin.livestack.csproj|LiveStack|" ;;
     polaralignment) echo "https://github.com/nitr57/nina.plugin.polaralignment||PolarAlignment|PolarAlignment/NINA.Plugins.PolarAlignment.csproj|PolarAlignment|" ;;
+    nightsummary)   echo "https://github.com/nitr57/nina.plugin.nightsummary||nina.plugin.nightsummary|NINA.Plugin.NightSummary/NINA.Plugin.NightSummary.csproj|NINA.Plugin.NightSummary|" ;;
     orbuculum)      echo "https://github.com/nitr57/nina.plugin.orbuculum||nina.plugin.orbuculum|Orbuculum/Orbuculum.csproj|Orbuculum|" ;;
     phd2tools)      echo "https://github.com/nitr57/nina.plugin.phd2tools||nina.plugin.phd2tools|nina.plugin.phd2tools.csproj|Phd2 Tools|" ;;
     tenmicron)      echo "https://github.com/nitr57/NINA.Joko.Plugin.TenMicron||NINA.Joko.Plugin.TenMicron|NINA.Joko.Plugin.TenMicron/NINA.Joko.Plugin.TenMicron.csproj|NINA.Joko.Plugin.TenMicron|java" ;;

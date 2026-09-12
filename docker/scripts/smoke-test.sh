@@ -63,6 +63,32 @@ fi
 if has_plugin Touch-N-Stars; then
   check sh -c 'curl -sf http://127.0.0.1:5000/ | grep -qi "<html"'
 fi
+# Touch-N-Stars pages that drive another plugin answer 503 (Night Summary:
+# "Installed": false) when that plugin is missing or did not load.
+if has_plugin Touch-N-Stars; then
+  if has_plugin PolarAlignment; then
+    check sh -c 'curl -sf http://127.0.0.1:5000/api/tppa/info | grep -q "\"Success\": true"'
+  fi
+  if has_plugin joko.nina.plugins; then
+    check sh -c 'curl -sf http://127.0.0.1:5000/api/hocusfocus/status | grep -q "\"Success\": true"'
+  fi
+  if has_plugin NINA.Plugin.NightSummary; then
+    check sh -c 'curl -sf http://127.0.0.1:5000/api/nightsummary/status | grep -q "\"Installed\": true"'
+  fi
+fi
+
+# Every bundled plugin must have loaded; a plugin whose composition fails is
+# logged as "Failed to load plugin" and skipped.
+latest_log='$(ls -t /home/pins/.local/share/NINA/Logs/*.log | head -n 1)'
+plugins_expected="$(in_container 'ls /opt/pins-plugins | wc -l')"
+loaded=0
+for _ in $(seq 1 30); do
+  loaded="$(in_container "grep -c 'Successfully loaded plugin' $latest_log || true")"
+  [ "${loaded:-0}" -ge "$plugins_expected" ] && break
+  sleep 2
+done
+check [ "${loaded:-0}" -ge "$plugins_expected" ]
+check in_container "! grep -q 'Failed to load plugin' $latest_log"
 
 if in_container 'test -x /usr/bin/supervisorctl' 2>/dev/null; then
   say "supervisor status:"
