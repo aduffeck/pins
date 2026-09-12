@@ -116,12 +116,30 @@ still render, but the index cannot be updated. Fix it once with:
 docker exec pins chown -R pins:pins /home/pins/.local/share/NINA/FramingAssistantCache
 ```
 
+Touch-N-Stars fetches the target picture through its plugin endpoint
+(`/api/targetpic` on port 5000). Whether that picture comes from the cache is
+a switch in the web app, "Use NINA cache for the target image" (framing page
+under the mosaic controls, and on the mount page next to the target picture).
+The switch is stored per browser and is on by default. With it on, the
+picture is rendered from the cache only, so a missing or empty cache shows a
+black image instead of the online DSS image; with it off, the cache is never
+used. The cache is read on every request, so no restart is needed after the
+download. pins only finds images listed in the index `CacheInfo.xml`, which
+is part of the download and must sit directly in the cache directory. If the
+picture stays black after the download, check the switch and the index:
+
+```bash
+# 2131 for the full cache; a missing file or a small count means the download
+# did not land here or the index was overwritten
+docker exec pins sh -c 'grep -c "<Image " /home/pins/.local/share/NINA/FramingAssistantCache/CacheInfo.xml'
+```
+
 ## Build arguments
 
 | Argument | Default | Purpose |
 | --- | --- | --- |
 | `UBUNTU_VERSION` | `24.04` | Ubuntu release for the runtime image and the native build stages |
-| `BUILD_PLUGINS` | `ninaapi touch-n-stars` | Space-separated plugin keys, or `none` |
+| `BUILD_PLUGINS` | `ninaapi touch-n-stars polaralignment joko livestack nightsummary` | Space-separated plugin keys, or `none` |
 | `BUILD_CONFIGURATION` | `Release` | .NET configuration |
 | `OPENCV_VERSION` / `OPENCVSHARP_VERSION` | `4.11.0` / `4.11.0.20250507` | Must match the `OpenCvSharp4` package version in `NINA/NINA.csproj` |
 | `INDI_VERSION` | `2.1.9` | INDI release tag (without the `v`) |
@@ -151,9 +169,29 @@ docker build --network=host \
 | `joko` | HocusFocus | `nitr57/joko.nina.plugins` |
 | `livestack` | LiveStack | `nitr57/nina.plugin.livestack` |
 | `polaralignment` | Polar Alignment | `nitr57/nina.plugin.polaralignment` |
+| `nightsummary` | Night Summary | `nitr57/nina.plugin.nightsummary` |
 | `orbuculum` | Orbuculum | `nitr57/nina.plugin.orbuculum` |
 | `phd2tools` | PHD2 Tools | `nitr57/nina.plugin.phd2tools` |
 | `tenmicron` | 10Micron (installs a JRE in the build stage) | `nitr57/NINA.Joko.Plugin.TenMicron` |
+
+Several Touch-N-Stars pages drive another plugin and only work when that
+plugin is in the image, which is why the default set goes beyond the two API
+plugins: Three Point Polar Alignment (TPPA) needs `polaralignment`, the
+HocusFocus page and the filter offset assistant need `joko`, Live Stack needs
+`livestack` and Night Summary needs `nightsummary`. The 10Micron pages need
+`tenmicron`, which is not in the default set because it pulls a Java build
+into the image; Ground Station has no build key yet. In the container this is
+the only way to get a plugin: the package installer Touch-N-Stars offers on a
+Raspberry Pi does not work here.
+
+Without the plugin the page's buttons do nothing. The TPPA page unparks the
+mount and then stalls, with
+`No subscribers found for topic: PolarAlignmentPlugin_DockablePolarAlignmentVM_StartAlignment`
+in the log and `GET http://<host>:5000/api/tppa/info` answering 503
+"PolarAlignment plugin not loaded"; `/api/hocusfocus/status` answers 503 the
+same way, and `/api/nightsummary/status` reports `Installed: false`. The
+plugins' view models are created when the plugin loads, not by a window, so
+they work in the headless container without any display.
 
 Plugin sources are cloned during the build, like the CI workflow does. If a
 plugin checkout already exists under `NINA.Plugins/<dir>` in the build context
