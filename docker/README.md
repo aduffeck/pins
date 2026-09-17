@@ -193,9 +193,20 @@ same way, and `/api/nightsummary/status` reports `Installed: false`. The
 plugins' view models are created when the plugin loads, not by a window, so
 they work in the headless container without any display.
 
-Plugin sources are cloned during the build, like the CI workflow does. If a
-plugin checkout already exists under `NINA.Plugins/<dir>` in the build context
-(an initialised submodule, possibly with local changes), it is used instead.
+Plugin sources are cloned during the build, like the CI workflow does. A plain
+`docker build .` never looks at the submodules under `NINA.Plugins`; they are
+excluded from the build context. To build plugins from local checkouts
+(unpushed branches, work in progress), pass the directory as the BuildKit named
+context `local-plugins`:
+
+```bash
+docker build --network=host --build-context local-plugins=NINA.Plugins -t pins:local .
+```
+
+Every directory in it that contains a project replaces the clone of the plugin
+with the same checkout directory name (`ninaAPI`, `Touch-N-Stars`, `LiveStack`,
+...); empty submodule directories are ignored and those plugins are cloned as
+usual. Host build output (`bin`, `obj`) is dropped inside the build.
 
 The Touch-N-Stars web app is cloned from `TNS_FRONTEND_REPO` by default. To
 build it from a local checkout (unpushed branches, work in progress), pass the
@@ -205,8 +216,9 @@ checkout as the BuildKit named context `tns-frontend`:
 docker build --network=host --build-context tns-frontend=../Touch-N-Stars -t pins:local .
 ```
 
-With compose, put the same path into a git-ignored `docker-compose.override.yml`
-under `services.pins.build.additional_contexts.tns-frontend`. The checkout's
+Both contexts can be combined. With compose, put the paths into a git-ignored
+`docker-compose.override.yml` under `services.pins.build.additional_contexts`
+(`tns-frontend`, `local-plugins`). The checkout's
 `.dockerignore` keeps `node_modules`, `dist` and the native projects out of the
 context; `npm install` runs inside the build.
 The Pi-hardware plugin `pins.plugin` (PowerBox/MeteoStation SDKs) is not

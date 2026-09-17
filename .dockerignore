@@ -20,4 +20,7 @@ NINA.SetupBundle/
 NINA/External/
 # Top-level frontend submodule; the Touch-N-Stars web app is built in the frontend stage.
 Touch-N-Stars/
+# Plugin submodules. A plain build clones every plugin; local checkouts are only used
+# when passed explicitly as the named build context `local-plugins`.
+NINA.Plugins/
 *.log
