@@ -230,6 +230,17 @@ COPY docker/scripts/common.sh docker/scripts/fetch-astap.sh /scripts/
 RUN /scripts/fetch-astap.sh /astap
 
 ############################################################################
+# tns-frontend: optional local checkout of the Touch-N-Stars web app.
+# This stage is only a placeholder. Override it with a BuildKit named context
+# to build the web app from local sources instead of cloning TNS_FRONTEND_REPO:
+#   docker build --build-context tns-frontend=../Touch-N-Stars ...
+#   (compose: build.additional_contexts, see docker-compose.yml)
+# The checkout's own .dockerignore keeps node_modules and native projects out.
+############################################################################
+FROM scratch AS tns-frontend
+COPY docker/README.md /.tns-frontend-placeholder
+
+############################################################################
 # frontend: Touch-N-Stars web app (only when the touch-n-stars plugin is built)
 ############################################################################
 FROM ${NODE_IMAGE} AS frontend
@@ -241,11 +252,20 @@ WORKDIR /frontend
 # credentials in the build, so let git fetch them anonymously over HTTPS.
 RUN git config --global --add url."https://github.com/".insteadOf "ssh://git@github.com/" \
  && git config --global --add url."https://github.com/".insteadOf "git@github.com:"
+COPY --from=tns-frontend / /frontend/local
+# A checkout without .dockerignore brings its node_modules and dist along; a stale
+# local install must never replace the one npm resolves inside the build.
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     set -eu; mkdir -p /frontend/dist; \
     case " ${BUILD_PLUGINS} " in \
       *" touch-n-stars "*) \
-        git clone --depth 1 --branch "${TNS_FRONTEND_BRANCH}" "${TNS_FRONTEND_REPO}" src; \
+        if [ -f /frontend/local/package.json ]; then \
+          echo "Using Touch-N-Stars web app sources from the tns-frontend build context"; \
+          cp -a /frontend/local src; \
+          rm -rf src/node_modules src/dist; \
+        else \
+          git clone --depth 1 --branch "${TNS_FRONTEND_BRANCH}" "${TNS_FRONTEND_REPO}" src; \
+        fi; \
         cd src; npm install; npm run build; \
         cp -a dist/. /frontend/dist/ ;; \
       *) echo "Touch-N-Stars plugin not selected; skipping web app build" ;; \

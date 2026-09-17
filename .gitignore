@@ -115,3 +115,6 @@ lfs/
 
 # Docker bind-mount data directories (docker-compose.yml)
 /data/
+
+# local compose overrides (e.g. tns-frontend build context)
+docker-compose.override.yml

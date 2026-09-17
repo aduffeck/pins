@@ -196,6 +196,19 @@ they work in the headless container without any display.
 Plugin sources are cloned during the build, like the CI workflow does. If a
 plugin checkout already exists under `NINA.Plugins/<dir>` in the build context
 (an initialised submodule, possibly with local changes), it is used instead.
+
+The Touch-N-Stars web app is cloned from `TNS_FRONTEND_REPO` by default. To
+build it from a local checkout (unpushed branches, work in progress), pass the
+checkout as the BuildKit named context `tns-frontend`:
+
+```bash
+docker build --network=host --build-context tns-frontend=../Touch-N-Stars -t pins:local .
+```
+
+With compose, put the same path into a git-ignored `docker-compose.override.yml`
+under `services.pins.build.additional_contexts.tns-frontend`. The checkout's
+`.dockerignore` keeps `node_modules`, `dist` and the native projects out of the
+context; `npm install` runs inside the build.
 The Pi-hardware plugin `pins.plugin` (PowerBox/MeteoStation SDKs) is not
 covered.
 

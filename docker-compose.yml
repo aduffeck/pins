@@ -20,6 +20,14 @@ services:
         # UID/GID of the in-container user; match the owner of a bind-mounted home.
         PINS_UID: "1000"
         PINS_GID: "1000"
+      # To build the web app from a local Touch-N-Stars checkout instead of
+      # cloning TNS_FRONTEND_REPO, add the path as a named build context in a
+      # git-ignored docker-compose.override.yml:
+      #   services:
+      #     pins:
+      #       build:
+      #         additional_contexts:
+      #           tns-frontend: ../Touch-N-Stars
     image: pins:local
     container_name: pins
     restart: unless-stopped
