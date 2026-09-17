@@ -241,6 +241,19 @@ FROM scratch AS tns-frontend
 COPY docker/README.md /.tns-frontend-placeholder
 
 ############################################################################
+# local-plugins: optional local plugin checkouts.
+# This stage is only a placeholder. Without an override every plugin is cloned
+# from its repository, so a plain `docker build .` never sees the state of the
+# submodules under NINA.Plugins (they are excluded from the main context).
+# Override it with a BuildKit named context to build plugins from local sources:
+#   docker build --build-context local-plugins=NINA.Plugins ...
+# Each directory in it that contains a project replaces the clone of the plugin
+# with the same checkout directory name (ninaAPI, Touch-N-Stars, LiveStack, ...).
+############################################################################
+FROM scratch AS local-plugins
+COPY docker/README.md /.local-plugins-placeholder
+
+############################################################################
 # frontend: Touch-N-Stars web app (only when the touch-n-stars plugin is built)
 ############################################################################
 FROM ${NODE_IMAGE} AS frontend
@@ -294,6 +307,7 @@ RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
 FROM build AS plugins
 ARG BUILD_PLUGINS="ninaapi touch-n-stars polaralignment joko livestack nightsummary"
 COPY --from=frontend /frontend/dist /frontend-dist
+COPY --from=local-plugins / /local-plugins
 RUN --mount=type=cache,target=/root/.nuget/packages,sharing=locked \
     docker/scripts/build-plugins.sh /out/pins /out/plugins "${BUILD_PLUGINS}"
 
