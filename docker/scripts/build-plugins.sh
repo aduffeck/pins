@@ -49,15 +49,22 @@ ensure_java() {
   export JavaPath
 }
 
-# Use a plugin checkout that is already present in the build context (for
-# example an initialised submodule with local changes); otherwise clone it.
+# Plugin sources are cloned, so a plain build is reproducible. A checkout passed
+# through the named build context `local-plugins` (mounted at $local_plugins)
+# replaces the clone of the plugin with the same checkout directory name.
+local_plugins="${LOCAL_PLUGINS_DIR:-/local-plugins}"
+
 ensure_source() {
-  dir="$1" repo="$2" branch="$3"
-  if find "$dir" -name '*.csproj' 2>/dev/null | grep -q .; then
-    log "Using plugin sources from build context: $dir"
+  dir="$1" repo="$2" branch="$3" checkout="$4"
+  rm -rf "$dir"
+  mkdir -p "$(dirname "$dir")"
+  if find "$local_plugins/$checkout" -name '*.csproj' 2>/dev/null | grep -q .; then
+    log "Using local plugin sources from the local-plugins build context: $checkout"
+    cp -a "$local_plugins/$checkout" "$dir"
+    # Build output of the host must not leak into the image build.
+    find "$dir" -type d \( -name bin -o -name obj \) -prune -exec rm -rf {} +
     return
   fi
-  rm -rf "$dir"
   if [ -n "$branch" ]; then
     git clone --depth 1 --branch "$branch" --single-branch "$repo" "$dir"
   else
@@ -80,7 +87,7 @@ build_plugin() {
   plugin_dir="$(dirname "$project")"
 
   log "=== Plugin $key -> $folder ==="
-  ensure_source "$dir" "$repo" "$branch"
+  ensure_source "$dir" "$repo" "$branch" "$checkout"
   [ -f "$project" ] || fail "Project not found: $project"
 
   case "$flags" in
