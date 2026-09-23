@@ -71,12 +71,12 @@ namespace NINA.Equipment.Interfaces {
         /// <summary>
         /// Start a Guiding Coach session (see docs/COACH.md of pins-guider): camera check (exposure × gain), sky and mount
         /// drift with guiding output off, mount response (Dec backlash, pulse response), guided trials of settings sets and a
-        /// report card. Returns true once the session was accepted (it runs in the background); false when rejected, with the
-        /// reason in <see cref="AdvancedCoachStatus.Message"/> (Phase = Failed). Stops guiding/looping as needed; guiding that
+        /// report card. Returns once the session was accepted (it runs in the background) or rejected; a rejection is reported
+        /// only in the result and leaves the status of a running/last session untouched. Stops guiding/looping as needed; guiding that
         /// was active at the start is resumed with the original settings when the session ends (also after cancel).
         /// Progress via <see cref="AdvancedGuiderEvent"/> type "coach" (payload <see cref="AdvancedCoachStatus"/>).
         /// </summary>
-        Task<bool> StartCoach(AdvancedCoachOptions options, CancellationToken ct);
+        Task<AdvancedCoachStartResult> StartCoach(AdvancedCoachOptions options, CancellationToken ct);
 
         /// <summary>Skip the running step (its partial results are kept when usable).</summary>
         Task<bool> SkipCoachStep(CancellationToken ct);
@@ -89,11 +89,11 @@ namespace NINA.Equipment.Interfaces {
 
         /// <summary>
         /// Apply the setting changes of the given findings (<see cref="AdvancedCoachFinding.Id"/>) or trials ("trial:&lt;id&gt;")
-        /// of the current/last session to the guider settings.
+        /// of the current/last session, or of active live hints (a hint applied this way is dismissed), to the guider settings.
         /// </summary>
         Task<bool> ApplyCoachActions(IList<string> ids, CancellationToken ct);
 
-        /// <summary>Stored reports, newest first, without the raw samples.</summary>
+        /// <summary>Stored reports of the active profile, newest first, without the raw samples.</summary>
         IList<AdvancedCoachReport> GetCoachHistory(int max);
 
         /// <summary>Hide a live hint (<see cref="AdvancedCoachFinding.Id"/>) for the rest of the guiding session.</summary>
@@ -332,8 +332,11 @@ namespace NINA.Equipment.Interfaces {
         /// <summary>Failure/rejection reason (English), null otherwise.</summary>
         public string Message { get; set; }
 
-        /// <summary>Stable code of <see cref="Message"/> for localisation (e.g. coach.noCamera, coach.busy, coach.calibrationFailed).</summary>
+        /// <summary>Stable code of <see cref="Message"/> for localisation (e.g. coach.interrupted, coach.calibrationFailed).</summary>
         public string MessageCode { get; set; }
+
+        /// <summary>Parameters of <see cref="MessageCode"/> (e.g. { "reason": "slew" }).</summary>
+        public Dictionary<string, object> MessageParameters { get; set; } = new Dictionary<string, object>();
         public string SessionId { get; set; }
         public DateTime? StartedAt { get; set; }
 
@@ -370,8 +373,15 @@ namespace NINA.Equipment.Interfaces {
         /// <summary>Pending, Running, Done, Skipped or Failed.</summary>
         public string State { get; set; }
 
-        /// <summary>Sub-phase code, e.g. "exposure 2s gain 120", "calibrating", "backlash", "pulses", "trial B", "settling".</summary>
+        /// <summary>English sub-phase text (logs); UIs render <see cref="DetailCode"/>.</summary>
         public string Detail { get; set; }
+
+        /// <summary>
+        /// Sub-phase code: camera.combination {exposureSeconds, gain, index, total}, calibrating, drift.measuring,
+        /// response.backlash, response.pulses {direction, ms}, trial.settling {id}, trial.running {id}; null when none.
+        /// </summary>
+        public string DetailCode { get; set; }
+        public Dictionary<string, object> DetailParameters { get; set; } = new Dictionary<string, object>();
 
         /// <summary>0..1.</summary>
         public double Progress { get; set; }
@@ -381,6 +391,19 @@ namespace NINA.Equipment.Interfaces {
         /// <summary>Why the step failed (English) and its code, null otherwise.</summary>
         public string Message { get; set; }
         public string MessageCode { get; set; }
+        public Dictionary<string, object> MessageParameters { get; set; } = new Dictionary<string, object>();
+    }
+
+    public class AdvancedCoachStartResult {
+        public bool Accepted { get; set; }
+
+        /// <summary>Rejection reason (English), its code (coach.busy, coach.notConnected, ...) and parameters; null when accepted.</summary>
+        public string Message { get; set; }
+        public string MessageCode { get; set; }
+        public Dictionary<string, object> MessageParameters { get; set; } = new Dictionary<string, object>();
+
+        /// <summary>Status after the call (the new session when accepted, the unchanged status when rejected).</summary>
+        public AdvancedCoachStatus Status { get; set; }
     }
 
     public class AdvancedCoachCameraCheck {
@@ -432,20 +455,25 @@ namespace NINA.Equipment.Interfaces {
         public double? RaDriftArcsecPerMin { get; set; }
         public double? DecDriftArcsecPerMin { get; set; }
 
-        /// <summary>Periodic error fit (null when the run is too short for a period).</summary>
+        /// <summary>
+        /// Periodic error fit (null when the run is too short for a period). Model on the RA samples:
+        /// Ra(T) = PeriodicErrorOffsetArcsec + RaDriftArcsecPerMin * T / 60 + PeriodicErrorAmplitudeArcsec * sin(2π T / PeriodicErrorPeriodSeconds + PeriodicErrorPhaseRad),
+        /// T = <see cref="AdvancedCoachSample.T"/>.
+        /// </summary>
         public double? PeriodicErrorPeriodSeconds { get; set; }
 
-        /// <summary>Half peak-to-peak amplitude of the fitted sinusoid, arcsec.</summary>
+        /// <summary>Amplitude (half peak-to-peak) of the fitted sinusoid, arcsec.</summary>
         public double? PeriodicErrorAmplitudeArcsec { get; set; }
         public double? PeriodicErrorPhaseRad { get; set; }
+        public double? PeriodicErrorOffsetArcsec { get; set; }
         public double? PolarAlignmentErrorArcmin { get; set; }
 
         /// <summary>True when the declination was unknown and 0° was assumed.</summary>
         public bool DeclinationAssumed { get; set; }
         public double? DriftLimitingExposureSeconds { get; set; }
 
-        /// <summary>Fraction of frame-to-frame jumps larger than 4 σ of the high-frequency jitter (wind, gusts).</summary>
-        public double? GustFraction { get; set; }
+        /// <summary>Share of frame-to-frame jumps larger than 4 σ of the high-frequency jitter (wind, gusts), 0..100.</summary>
+        public double? GustPercent { get; set; }
     }
 
     public class AdvancedCoachResponse {
