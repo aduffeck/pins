@@ -242,5 +242,8 @@ namespace NINA.Equipment.Interfaces {
 
         /// <summary>True when the value is only applied on the next connect.</summary>
         public bool RequiresReconnect { get; set; }
+
+        /// <summary>True for the essential settings shown in the basic settings view.</summary>
+        public bool Basic { get; set; }
     }
 }
