@@ -68,6 +68,39 @@ namespace NINA.Equipment.Interfaces {
         /// </summary>
         Task<bool> BuildDarkLibrary(double minExposureSeconds, double maxExposureSeconds, int framesPerExposure, CancellationToken ct);
 
+        /// <summary>
+        /// Start the guiding assistant (PHD2-style): with guiding output off it measures seeing, RA periodic error and drift,
+        /// Dec drift / polar alignment error. Requires a selected star (looping or guiding; guiding output is suspended).
+        /// Progress via <see cref="AdvancedGuiderEvent"/> type "assistant" (payload <see cref="AdvancedAssistantStatus"/>).
+        /// </summary>
+        Task<bool> StartGuidingAssistant(AdvancedAssistantOptions options, CancellationToken ct);
+
+        /// <summary>End the measurement; when <paramref name="measureBacklash"/> is true a Dec backlash measurement follows.</summary>
+        Task<bool> StopGuidingAssistant(bool measureBacklash, CancellationToken ct);
+
+        /// <summary>Abort the assistant (any phase); guiding output is restored.</summary>
+        Task<bool> CancelGuidingAssistant(CancellationToken ct);
+
+        AdvancedAssistantStatus GetGuidingAssistantStatus();
+
+        /// <summary>Apply the given recommendations (by id) to the guider settings.</summary>
+        Task<bool> ApplyAssistantRecommendations(IList<string> ids, CancellationToken ct);
+
+        /// <summary>
+        /// Guide camera settings finder: loops through exposure × gain combinations with guiding stopped and measures SNR,
+        /// saturation, usable stars and centroid jitter; recommends the combination with the lowest jitter.
+        /// Progress via <see cref="AdvancedGuiderEvent"/> type "sweep" (payload <see cref="AdvancedSweepStatus"/>).
+        /// </summary>
+        Task<bool> StartSettingsSweep(AdvancedSweepOptions options, CancellationToken ct);
+
+        Task<bool> CancelSettingsSweep(CancellationToken ct);
+
+        /// <summary>Status; when idle it carries the camera's gain range for building the options.</summary>
+        AdvancedSweepStatus GetSettingsSweepStatus();
+
+        /// <summary>Apply the recommended exposure and gain.</summary>
+        Task<bool> ApplySweepRecommendation(CancellationToken ct);
+
         /// <summary>Raised for every guide step, alert, state change, calibration step, settle update and new frame.</summary>
         event EventHandler<AdvancedGuiderEventArgs> AdvancedGuiderEvent;
     }
@@ -266,5 +299,99 @@ namespace NINA.Equipment.Interfaces {
 
         /// <summary>True for the essential settings shown in the basic settings view.</summary>
         public bool Basic { get; set; }
+    }
+
+    public class AdvancedAssistantOptions {
+        /// <summary>Stop the measurement automatically after this many seconds (null: run until stopped).</summary>
+        public double? DurationSeconds { get; set; }
+
+        /// <summary>Measure Dec backlash after the measurement (used when the measurement ends automatically).</summary>
+        public bool MeasureBacklash { get; set; } = true;
+    }
+
+    public class AdvancedAssistantStatus {
+        /// <summary>Idle, Measuring, Backlash, Complete, Cancelled or Failed.</summary>
+        public string Phase { get; set; }
+        public string Message { get; set; }
+        public double ElapsedSeconds { get; set; }
+        public int Samples { get; set; }
+
+        /// <summary>Measurement time after which the results are considered reliable (PHD2: 2 min).</summary>
+        public double RecommendedSeconds { get; set; }
+        public double? SnrAvg { get; set; }
+
+        /// <summary>High-frequency (seeing) RMS with guiding off.</summary>
+        public double? HighFrequencyRmsRaArcsec { get; set; }
+        public double? HighFrequencyRmsDecArcsec { get; set; }
+        public double? HighFrequencyRmsTotalArcsec { get; set; }
+        public double? RaPeakToPeakArcsec { get; set; }
+        public double? RaMaxDriftArcsecPerSec { get; set; }
+        public double? RaDriftArcsecPerMin { get; set; }
+        public double? DecDriftArcsecPerMin { get; set; }
+        public double? PolarAlignmentErrorArcmin { get; set; }
+
+        /// <summary>Longest exposure that keeps RA drift within the seeing (PHD2 'drift-limiting exposure').</summary>
+        public double? DriftLimitingExposureSeconds { get; set; }
+        public double? BacklashMs { get; set; }
+        public double? BacklashArcsec { get; set; }
+
+        /// <summary>Human-readable backlash measurement state/result.</summary>
+        public string BacklashStatus { get; set; }
+
+        /// <summary>0..1 while measuring backlash.</summary>
+        public double? BacklashProgress { get; set; }
+        public List<AdvancedAssistantRecommendation> Recommendations { get; set; } = new List<AdvancedAssistantRecommendation>();
+    }
+
+    public class AdvancedAssistantRecommendation {
+        /// <summary>Stable id, e.g. RaMinMove, DecMinMove, BacklashCompensation, Exposure, PolarAlignment, DecGuideMode.</summary>
+        public string Id { get; set; }
+
+        /// <summary>info or warning.</summary>
+        public string Severity { get; set; }
+        public string Title { get; set; }
+        public string Detail { get; set; }
+
+        /// <summary>Guider setting this recommendation changes (null for advice only).</summary>
+        public string SettingName { get; set; }
+        public string Value { get; set; }
+        public bool Applied { get; set; }
+    }
+
+    public class AdvancedSweepOptions {
+        public List<double> ExposureSeconds { get; set; } = new List<double>();
+        public List<int> Gains { get; set; } = new List<int>();
+        public int FramesPerStep { get; set; } = 5;
+    }
+
+    public class AdvancedSweepStatus {
+        /// <summary>Idle, Running, Complete, Cancelled or Failed.</summary>
+        public string Phase { get; set; }
+        public string Message { get; set; }
+        public int Index { get; set; }
+        public int Total { get; set; }
+        public int? GainMin { get; set; }
+        public int? GainMax { get; set; }
+        public int? CurrentGain { get; set; }
+        public double CurrentExposureSeconds { get; set; }
+        public List<AdvancedSweepResult> Results { get; set; } = new List<AdvancedSweepResult>();
+        public AdvancedSweepResult Recommended { get; set; }
+    }
+
+    public class AdvancedSweepResult {
+        public double ExposureSeconds { get; set; }
+        public int Gain { get; set; }
+        public double? Snr { get; set; }
+        public double? Hfd { get; set; }
+        public int Stars { get; set; }
+        public bool Saturated { get; set; }
+
+        /// <summary>Centroid scatter of the primary star (guiding off, linear drift removed).</summary>
+        public double? JitterArcsec { get; set; }
+        public double? JitterPx { get; set; }
+        public bool Feasible { get; set; }
+
+        /// <summary>Why the combination is not feasible (saturated, low SNR, no star), null when feasible.</summary>
+        public string Reason { get; set; }
     }
 }
