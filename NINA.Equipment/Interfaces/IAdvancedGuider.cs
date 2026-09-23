@@ -61,6 +61,13 @@ namespace NINA.Equipment.Interfaces {
         /// <summary>Dither by up to <paramref name="pixels"/> guide pixels and wait for settling.</summary>
         Task<bool> DitherBy(double pixels, bool raOnly, CancellationToken ct);
 
+        /// <summary>
+        /// Build a dark library for exposures between <paramref name="minExposureSeconds"/> and <paramref name="maxExposureSeconds"/>
+        /// (PHD2's standard exposure steps), <paramref name="framesPerExposure"/> frames each. The guide scope must be covered and
+        /// the guider stopped. Progress is reported through <see cref="AdvancedGuiderEvent"/> with type "darks".
+        /// </summary>
+        Task<bool> BuildDarkLibrary(double minExposureSeconds, double maxExposureSeconds, int framesPerExposure, CancellationToken ct);
+
         /// <summary>Raised for every guide step, alert, state change, calibration step, settle update and new frame.</summary>
         event EventHandler<AdvancedGuiderEventArgs> AdvancedGuiderEvent;
     }
@@ -96,6 +103,9 @@ namespace NINA.Equipment.Interfaces {
         public AdvancedGuiderStats SessionStats { get; set; }
         public AdvancedGuiderAlert LastError { get; set; }
         public string SettleStatus { get; set; }
+
+        /// <summary>Dark library in use (file name and number of darks), empty when none.</summary>
+        public string DarkLibrary { get; set; }
     }
 
     public class AdvancedGuiderStats {
