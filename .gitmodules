@@ -33,3 +33,7 @@
 [submodule "NINA.Plugins/nina.plugin.phd2tools"]
 	path = NINA.Plugins/nina.plugin.phd2tools
 	url = https://github.com/nitr57/nina.plugin.phd2tools.git
+[submodule "NINA.Plugins/pins-guider"]
+	path = NINA.Plugins/pins-guider
+	url = git@github.com:aduffeck/pins-guider.git
+	branch = m1/guider
