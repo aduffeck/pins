@@ -69,43 +69,41 @@ namespace NINA.Equipment.Interfaces {
         Task<bool> BuildDarkLibrary(double minExposureSeconds, double maxExposureSeconds, int framesPerExposure, CancellationToken ct);
 
         /// <summary>
-        /// Start the guiding assistant (PHD2-style): with guiding output off it measures seeing, RA periodic error and drift,
-        /// Dec drift / polar alignment error. Requires a selected star (looping or guiding; guiding output is suspended).
-        /// Progress via <see cref="AdvancedGuiderEvent"/> type "assistant" (payload <see cref="AdvancedAssistantStatus"/>).
+        /// Start a Guiding Coach session (see docs/COACH.md of pins-guider): camera check (exposure × gain), sky and mount
+        /// drift with guiding output off, mount response (Dec backlash, pulse response), guided trials of settings sets and a
+        /// report card. Returns true once the session was accepted (it runs in the background); false when rejected, with the
+        /// reason in <see cref="AdvancedCoachStatus.Message"/> (Phase = Failed). Stops guiding/looping as needed; guiding that
+        /// was active at the start is resumed with the original settings when the session ends (also after cancel).
+        /// Progress via <see cref="AdvancedGuiderEvent"/> type "coach" (payload <see cref="AdvancedCoachStatus"/>).
         /// </summary>
-        Task<bool> StartGuidingAssistant(AdvancedAssistantOptions options, CancellationToken ct);
+        Task<bool> StartCoach(AdvancedCoachOptions options, CancellationToken ct);
 
-        /// <summary>End the measurement; when <paramref name="measureBacklash"/> is true a Dec backlash measurement follows.</summary>
-        Task<bool> StopGuidingAssistant(bool measureBacklash, CancellationToken ct);
+        /// <summary>Skip the running step (its partial results are kept when usable).</summary>
+        Task<bool> SkipCoachStep(CancellationToken ct);
 
-        /// <summary>Abort the assistant (any phase); guiding output is restored.</summary>
-        Task<bool> CancelGuidingAssistant(CancellationToken ct);
+        /// <summary>Cancel the session; temporary settings are restored and guiding output re-enabled.</summary>
+        Task<bool> CancelCoach(CancellationToken ct);
 
-        AdvancedAssistantStatus GetGuidingAssistantStatus();
-
-        /// <summary>Apply the given recommendations (by id) to the guider settings.</summary>
-        Task<bool> ApplyAssistantRecommendations(IList<string> ids, CancellationToken ct);
+        /// <summary>Current or last session (Phase Idle before the first session); always carries the camera's gain range.</summary>
+        AdvancedCoachStatus GetCoachStatus();
 
         /// <summary>
-        /// Guide camera settings finder: loops through exposure × gain combinations with guiding stopped and measures SNR,
-        /// saturation, usable stars and centroid jitter; recommends the combination with the lowest jitter.
-        /// Progress via <see cref="AdvancedGuiderEvent"/> type "sweep" (payload <see cref="AdvancedSweepStatus"/>).
+        /// Apply the setting changes of the given findings (<see cref="AdvancedCoachFinding.Id"/>) or trials ("trial:&lt;id&gt;")
+        /// of the current/last session to the guider settings.
         /// </summary>
-        Task<bool> StartSettingsSweep(AdvancedSweepOptions options, CancellationToken ct);
+        Task<bool> ApplyCoachActions(IList<string> ids, CancellationToken ct);
 
-        Task<bool> CancelSettingsSweep(CancellationToken ct);
+        /// <summary>Stored reports, newest first, without the raw samples.</summary>
+        IList<AdvancedCoachReport> GetCoachHistory(int max);
 
-        /// <summary>Status; when idle it carries the camera's gain range for building the options.</summary>
-        AdvancedSweepStatus GetSettingsSweepStatus();
-
-        /// <summary>Apply the recommended exposure and gain.</summary>
-        Task<bool> ApplySweepRecommendation(CancellationToken ct);
+        /// <summary>Hide a live hint (<see cref="AdvancedCoachFinding.Id"/>) for the rest of the guiding session.</summary>
+        bool DismissHint(string id);
 
         /// <summary>Raised for every guide step, alert, state change, calibration step, settle update and new frame.</summary>
         event EventHandler<AdvancedGuiderEventArgs> AdvancedGuiderEvent;
     }
 
-    /// <summary>Event pushed to UIs. <see cref="Type"/> is one of: step, alert, state, calibration, settle, frame, stats.</summary>
+    /// <summary>Event pushed to UIs. <see cref="Type"/> is one of: step, alert, state, calibration, settle, frame, stats, darks, coach, hint.</summary>
     public class AdvancedGuiderEventArgs : EventArgs {
         public string Type { get; set; }
         public DateTime Timestamp { get; set; }
@@ -139,6 +137,12 @@ namespace NINA.Equipment.Interfaces {
 
         /// <summary>Dark library in use (file name and number of darks), empty when none.</summary>
         public string DarkLibrary { get; set; }
+
+        /// <summary>Active (not expired, not dismissed) live coaching hints while guiding.</summary>
+        public List<AdvancedCoachFinding> Hints { get; set; } = new List<AdvancedCoachFinding>();
+
+        /// <summary>True while a Guiding Coach session is running (guiding commands are refused or cancel it).</summary>
+        public bool CoachRunning { get; set; }
     }
 
     public class AdvancedGuiderStats {
@@ -301,97 +305,300 @@ namespace NINA.Equipment.Interfaces {
         public bool Basic { get; set; }
     }
 
-    public class AdvancedAssistantOptions {
-        /// <summary>Stop the measurement automatically after this many seconds (null: run until stopped).</summary>
-        public double? DurationSeconds { get; set; }
+    public class AdvancedCoachOptions {
+        /// <summary>Steps to run: CameraCheck, Drift, MountResponse, Trials (the report is always built). Empty = all.</summary>
+        public List<string> Steps { get; set; } = new List<string>();
 
-        /// <summary>Measure Dec backlash after the measurement (used when the measurement ends automatically).</summary>
-        public bool MeasureBacklash { get; set; } = true;
-    }
-
-    public class AdvancedAssistantStatus {
-        /// <summary>Idle, Measuring, Backlash, Complete, Cancelled or Failed.</summary>
-        public string Phase { get; set; }
-        public string Message { get; set; }
-        public double ElapsedSeconds { get; set; }
-        public int Samples { get; set; }
-
-        /// <summary>Measurement time after which the results are considered reliable (PHD2: 2 min).</summary>
-        public double RecommendedSeconds { get; set; }
-        public double? SnrAvg { get; set; }
-
-        /// <summary>High-frequency (seeing) RMS with guiding off.</summary>
-        public double? HighFrequencyRmsRaArcsec { get; set; }
-        public double? HighFrequencyRmsDecArcsec { get; set; }
-        public double? HighFrequencyRmsTotalArcsec { get; set; }
-        public double? RaPeakToPeakArcsec { get; set; }
-        public double? RaMaxDriftArcsecPerSec { get; set; }
-        public double? RaDriftArcsecPerMin { get; set; }
-        public double? DecDriftArcsecPerMin { get; set; }
-        public double? PolarAlignmentErrorArcmin { get; set; }
-
-        /// <summary>Longest exposure that keeps RA drift within the seeing (PHD2 'drift-limiting exposure').</summary>
-        public double? DriftLimitingExposureSeconds { get; set; }
-        public double? BacklashMs { get; set; }
-        public double? BacklashArcsec { get; set; }
-
-        /// <summary>Human-readable backlash measurement state/result.</summary>
-        public string BacklashStatus { get; set; }
-
-        /// <summary>0..1 while measuring backlash.</summary>
-        public double? BacklashProgress { get; set; }
-        public List<AdvancedAssistantRecommendation> Recommendations { get; set; } = new List<AdvancedAssistantRecommendation>();
-    }
-
-    public class AdvancedAssistantRecommendation {
-        /// <summary>Stable id, e.g. RaMinMove, DecMinMove, BacklashCompensation, Exposure, PolarAlignment, DecGuideMode.</summary>
-        public string Id { get; set; }
-
-        /// <summary>info or warning.</summary>
-        public string Severity { get; set; }
-        public string Title { get; set; }
-        public string Detail { get; set; }
-
-        /// <summary>Guider setting this recommendation changes (null for advice only).</summary>
-        public string SettingName { get; set; }
-        public string Value { get; set; }
-        public bool Applied { get; set; }
-    }
-
-    public class AdvancedSweepOptions {
+        /// <summary>Camera check exposures; empty = 1, 2, 3 s.</summary>
         public List<double> ExposureSeconds { get; set; } = new List<double>();
+
+        /// <summary>Camera check gains; empty = current gain plus two spread over the camera's gain range (current only without a range).</summary>
         public List<int> Gains { get; set; } = new List<int>();
-        public int FramesPerStep { get; set; } = 5;
+        public int FramesPerCombination { get; set; } = 5;
+        public double DriftSeconds { get; set; } = 180;
+        public double TrialSeconds { get; set; } = 120;
+
+        /// <summary>Guide with the current settings again at the end of the trials to detect changing conditions.</summary>
+        public bool RepeatBaseline { get; set; } = true;
+
+        /// <summary>Calibrate when a step needs a calibration and none is valid (otherwise such steps fail).</summary>
+        public bool AllowCalibration { get; set; } = true;
     }
 
-    public class AdvancedSweepStatus {
+    public class AdvancedCoachStatus {
         /// <summary>Idle, Running, Complete, Cancelled or Failed.</summary>
         public string Phase { get; set; }
+
+        /// <summary>Failure/rejection reason (English), null otherwise.</summary>
         public string Message { get; set; }
-        public int Index { get; set; }
-        public int Total { get; set; }
+
+        /// <summary>Stable code of <see cref="Message"/> for localisation (e.g. coach.noCamera, coach.busy, coach.calibrationFailed).</summary>
+        public string MessageCode { get; set; }
+        public string SessionId { get; set; }
+        public DateTime? StartedAt { get; set; }
+
+        /// <summary>Running step: CameraCheck, Calibrating, Drift, MountResponse, Trials or Report; null when not running.</summary>
+        public string Step { get; set; }
+        public List<AdvancedCoachStepStatus> Steps { get; set; } = new List<AdvancedCoachStepStatus>();
+
+        /// <summary>Overall progress 0..1.</summary>
+        public double Progress { get; set; }
+        public double ElapsedSeconds { get; set; }
+        public double EstimatedTotalSeconds { get; set; }
+
+        /// <summary>Camera gain range and current settings (also when idle, for building the options).</summary>
         public int? GainMin { get; set; }
         public int? GainMax { get; set; }
         public int? CurrentGain { get; set; }
         public double CurrentExposureSeconds { get; set; }
-        public List<AdvancedSweepResult> Results { get; set; } = new List<AdvancedSweepResult>();
-        public AdvancedSweepResult Recommended { get; set; }
+        public AdvancedCoachCameraCheck Camera { get; set; }
+        public AdvancedCoachDrift Drift { get; set; }
+        public AdvancedCoachResponse Response { get; set; }
+        public List<AdvancedCoachTrial> Trials { get; set; } = new List<AdvancedCoachTrial>();
+
+        /// <summary>Findings so far (all steps).</summary>
+        public List<AdvancedCoachFinding> Findings { get; set; } = new List<AdvancedCoachFinding>();
+
+        /// <summary>Set when the session completed.</summary>
+        public AdvancedCoachReport Report { get; set; }
     }
 
-    public class AdvancedSweepResult {
+    public class AdvancedCoachStepStatus {
+        /// <summary>CameraCheck, Drift, MountResponse or Trials.</summary>
+        public string Name { get; set; }
+
+        /// <summary>Pending, Running, Done, Skipped or Failed.</summary>
+        public string State { get; set; }
+
+        /// <summary>Sub-phase code, e.g. "exposure 2s gain 120", "calibrating", "backlash", "pulses", "trial B", "settling".</summary>
+        public string Detail { get; set; }
+
+        /// <summary>0..1.</summary>
+        public double Progress { get; set; }
+        public double ElapsedSeconds { get; set; }
+        public double EstimatedSeconds { get; set; }
+
+        /// <summary>Why the step failed (English) and its code, null otherwise.</summary>
+        public string Message { get; set; }
+        public string MessageCode { get; set; }
+    }
+
+    public class AdvancedCoachCameraCheck {
+        public List<AdvancedCoachCameraResult> Results { get; set; } = new List<AdvancedCoachCameraResult>();
+        public AdvancedCoachCameraResult Recommended { get; set; }
+    }
+
+    public class AdvancedCoachCameraResult {
         public double ExposureSeconds { get; set; }
         public int Gain { get; set; }
+        public int Frames { get; set; }
         public double? Snr { get; set; }
         public double? Hfd { get; set; }
         public int Stars { get; set; }
         public bool Saturated { get; set; }
 
         /// <summary>Centroid scatter of the primary star (guiding off, linear drift removed).</summary>
-        public double? JitterArcsec { get; set; }
         public double? JitterPx { get; set; }
+        public double? JitterArcsec { get; set; }
         public bool Feasible { get; set; }
 
-        /// <summary>Why the combination is not feasible (saturated, low SNR, no star), null when feasible.</summary>
+        /// <summary>Why the combination is not feasible: saturated, lowSnr, noStar; null when feasible.</summary>
         public string Reason { get; set; }
+    }
+
+    public class AdvancedCoachSample {
+        /// <summary>Seconds since the measurement started.</summary>
+        public double T { get; set; }
+
+        /// <summary>Mount-axis position relative to the start, arcsec.</summary>
+        public double Ra { get; set; }
+        public double Dec { get; set; }
+    }
+
+    public class AdvancedCoachDrift {
+        public double ElapsedSeconds { get; set; }
+        public double TargetSeconds { get; set; }
+
+        /// <summary>Raw samples (live plot); omitted in the history.</summary>
+        public List<AdvancedCoachSample> Samples { get; set; } = new List<AdvancedCoachSample>();
+        public double? SnrAvg { get; set; }
+
+        /// <summary>High-frequency (seeing) RMS with guiding off.</summary>
+        public double? SeeingRaArcsec { get; set; }
+        public double? SeeingDecArcsec { get; set; }
+        public double? SeeingTotalArcsec { get; set; }
+        public double? RaPeakToPeakArcsec { get; set; }
+        public double? RaMaxRateArcsecPerSec { get; set; }
+        public double? RaDriftArcsecPerMin { get; set; }
+        public double? DecDriftArcsecPerMin { get; set; }
+
+        /// <summary>Periodic error fit (null when the run is too short for a period).</summary>
+        public double? PeriodicErrorPeriodSeconds { get; set; }
+
+        /// <summary>Half peak-to-peak amplitude of the fitted sinusoid, arcsec.</summary>
+        public double? PeriodicErrorAmplitudeArcsec { get; set; }
+        public double? PeriodicErrorPhaseRad { get; set; }
+        public double? PolarAlignmentErrorArcmin { get; set; }
+
+        /// <summary>True when the declination was unknown and 0° was assumed.</summary>
+        public bool DeclinationAssumed { get; set; }
+        public double? DriftLimitingExposureSeconds { get; set; }
+
+        /// <summary>Fraction of frame-to-frame jumps larger than 4 σ of the high-frequency jitter (wind, gusts).</summary>
+        public double? GustFraction { get; set; }
+    }
+
+    public class AdvancedCoachResponse {
+        public double? BacklashMs { get; set; }
+        public double? BacklashArcsec { get; set; }
+
+        /// <summary>Measured, None (no backlash), Unreliable (e.g. Dec drift too strong, star lost) or Skipped.</summary>
+        public string BacklashState { get; set; }
+
+        /// <summary>Dec position (arcsec) vs cumulative pulse time (ms) of the backlash test, for plotting (X = ms, Y = arcsec).</summary>
+        public List<AdvancedCoachPoint> BacklashPoints { get; set; } = new List<AdvancedCoachPoint>();
+        public List<AdvancedCoachPulse> Pulses { get; set; } = new List<AdvancedCoachPulse>();
+        public int? MinEffectivePulseRaMs { get; set; }
+        public int? MinEffectivePulseDecMs { get; set; }
+
+        /// <summary>West/East and North/South move ratios (1 = symmetric).</summary>
+        public double? AsymmetryRa { get; set; }
+        public double? AsymmetryDec { get; set; }
+
+        /// <summary>Measured / calibrated rate.</summary>
+        public double? RateRatioRa { get; set; }
+        public double? RateRatioDec { get; set; }
+    }
+
+    public class AdvancedCoachPoint {
+        public double X { get; set; }
+        public double Y { get; set; }
+    }
+
+    public class AdvancedCoachPulse {
+        /// <summary>West, East, North or South.</summary>
+        public string Direction { get; set; }
+        public int DurationMs { get; set; }
+        public double ExpectedArcsec { get; set; }
+        public double MovedArcsec { get; set; }
+
+        /// <summary>Moved / expected.</summary>
+        public double Ratio { get; set; }
+    }
+
+    public class AdvancedCoachTrial {
+        /// <summary>A (current), B (suggestion), C (variant), A2 (current again).</summary>
+        public string Id { get; set; }
+
+        /// <summary>current, suggestion, variant or currentRepeat.</summary>
+        public string Kind { get; set; }
+
+        /// <summary>Settings that differ from the current settings (empty for A/A2).</summary>
+        public List<AdvancedCoachSettingChange> Settings { get; set; } = new List<AdvancedCoachSettingChange>();
+
+        /// <summary>Pending, Settling, Running, Done, Skipped or Failed.</summary>
+        public string State { get; set; }
+        public double ElapsedSeconds { get; set; }
+        public int Frames { get; set; }
+        public double? RmsRaArcsec { get; set; }
+        public double? RmsDecArcsec { get; set; }
+        public double? RmsTotalArcsec { get; set; }
+        public double? PeakArcsec { get; set; }
+        public double? OscillationIndex { get; set; }
+        public double? SnrAvg { get; set; }
+        public bool IsWinner { get; set; }
+        public bool Applied { get; set; }
+    }
+
+    public class AdvancedCoachSettingChange {
+        /// <summary>Guider setting name (<see cref="AdvancedGuiderSetting.Name"/>).</summary>
+        public string Name { get; set; }
+
+        /// <summary>New value, invariant culture.</summary>
+        public string Value { get; set; }
+
+        /// <summary>Value at the time of the finding, invariant culture.</summary>
+        public string CurrentValue { get; set; }
+    }
+
+    public class AdvancedCoachFinding {
+        /// <summary>Unique within a session/report: the code, plus ":&lt;qualifier&gt;" for repeated codes (e.g. response.minPulse:Ra).</summary>
+        public string Id { get; set; }
+
+        /// <summary>Stable code for localised teaching texts, e.g. drift.polarAlignment, hint.raOscillation.</summary>
+        public string Code { get; set; }
+
+        /// <summary>CameraCheck, Drift, MountResponse, Trials, Report or Live.</summary>
+        public string Step { get; set; }
+
+        /// <summary>good, info, warning or problem.</summary>
+        public string Severity { get; set; }
+
+        /// <summary>Numbers (double) and strings for the text templates, e.g. { "arcmin": 7.3, "decAssumed": false }.</summary>
+        public Dictionary<string, object> Parameters { get; set; } = new Dictionary<string, object>();
+
+        /// <summary>Estimated total RMS improvement (arcsec) if fixed; used to rank actions.</summary>
+        public double? ImpactArcsec { get; set; }
+
+        /// <summary>Setting changes applied by <see cref="IAdvancedGuider.ApplyCoachActions"/> (empty for advice only).</summary>
+        public List<AdvancedCoachSettingChange> Changes { get; set; } = new List<AdvancedCoachSettingChange>();
+        public bool Applied { get; set; }
+
+        /// <summary>English fallback text (logs; UIs render from <see cref="Code"/>).</summary>
+        public string Message { get; set; }
+        public DateTime Timestamp { get; set; }
+
+        /// <summary>Live hints only: when the hint stops being shown.</summary>
+        public DateTime? ExpiresAt { get; set; }
+    }
+
+    public class AdvancedCoachReport {
+        public string Id { get; set; }
+        public DateTime Timestamp { get; set; }
+
+        /// <summary>Observing night (noon to noon), yyyy-MM-dd.</summary>
+        public string Night { get; set; }
+        public string ProfileName { get; set; }
+        public string CameraName { get; set; }
+        public double? FocalLengthMm { get; set; }
+
+        /// <summary>Guide pixel scale, arcsec/px.</summary>
+        public double PixelScale { get; set; }
+
+        /// <summary>Imaging camera scale from the profile, arcsec/px (null when unknown).</summary>
+        public double? ImagingScale { get; set; }
+        public double? DeclinationDeg { get; set; }
+        public string PierSide { get; set; }
+
+        /// <summary>Steps that ran (Done).</summary>
+        public List<string> Steps { get; set; } = new List<string>();
+
+        /// <summary>Guided RMS (from the best trial, else the last guiding window) and where it came from: trials, window or none.</summary>
+        public double? GuidedRmsArcsec { get; set; }
+        public double? GuidedRmsRaArcsec { get; set; }
+        public double? GuidedRmsDecArcsec { get; set; }
+        public string GuidedSource { get; set; }
+
+        /// <summary>Error budget (arcsec RMS, quadrature): seeing + centroid noise + mount/other = guided.</summary>
+        public double? SeeingArcsec { get; set; }
+        public double? CentroidNoiseArcsec { get; set; }
+        public double? MountArcsec { get; set; }
+        public double? BacklashArcsec { get; set; }
+        public double? PolarAlignmentErrorArcmin { get; set; }
+        public double? PeriodicErrorAmplitudeArcsec { get; set; }
+
+        /// <summary>excellent, good, fair, poor or unknown.</summary>
+        public string Grade { get; set; }
+
+        /// <summary>Guided RMS / imaging scale (or guided RMS in arcsec when no imaging scale is known).</summary>
+        public double? GradeRatio { get; set; }
+
+        /// <summary>Ranked action ids (findings with warning/problem, biggest impact first).</summary>
+        public List<string> Actions { get; set; } = new List<string>();
+        public List<AdvancedCoachFinding> Findings { get; set; } = new List<AdvancedCoachFinding>();
+        public AdvancedCoachCameraCheck Camera { get; set; }
+        public AdvancedCoachDrift Drift { get; set; }
+        public AdvancedCoachResponse Response { get; set; }
+        public List<AdvancedCoachTrial> Trials { get; set; } = new List<AdvancedCoachTrial>();
     }
 }
