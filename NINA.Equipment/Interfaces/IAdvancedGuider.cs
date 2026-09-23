@@ -229,6 +229,17 @@ namespace NINA.Equipment.Interfaces {
         public int DecSteps { get; set; }
         public string LastIssue { get; set; }
         public bool DecFlipRequired { get; set; }
+
+        /// <summary>Star position after every calibration step (camera px), empty for older calibrations.</summary>
+        public List<AdvancedCalibrationPoint> Points { get; set; } = new List<AdvancedCalibrationPoint>();
+    }
+
+    public class AdvancedCalibrationPoint {
+        /// <summary>Start, West, East, Backlash, North, South or NudgeSouth.</summary>
+        public string Direction { get; set; }
+        public int Step { get; set; }
+        public double X { get; set; }
+        public double Y { get; set; }
     }
 
     public class AdvancedGuiderSetting {
