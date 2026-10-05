@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+### Added
+- Equipment: `IAdvancedGuider` contract for guiders that run inside pins, such as the pins-guider native guider plugin. It lets UIs like Touch-N-Stars show live guide frames with star overlays, per-frame guide steps, calibration, statistics and alerts, and edit the guider's settings. A guider can also offer a Guiding Coach (`IGuidingCoach`) and a flight recorder of guiding incidents (`IGuideIncidentRecorder`). The contract is experimental and carries a version number (`AdvancedGuiderContract.Version`)
+
 ## 1.1.56 - 2026-09-07
 ### Fixed
 - ToupTek-alike cameras (ToupTek, Altair, Omegon, SVBony, Ogma, ...) could stop delivering images during fast exposure series such as bias frames, or stay unresponsive after an aborted exposure, until they were reconnected. Frames that arrive while no exposure is waiting for them (duplicate image events, frames from aborted or timed-out exposures) are now discarded right before the next exposure is triggered instead of after every download, a failed download and a stopped exposure flush the SDK frame queue, and the software trigger mode is re-armed after an exposure was stopped. Live view keeps discarding stale frames after every pull

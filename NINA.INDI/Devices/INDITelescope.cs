@@ -829,16 +829,16 @@ namespace NINA.INDI.Devices {
             try {
                 switch (direction) {
                     case GuideDirections.guideNorth:
-                        SetNumberValue("TELESCOPE_TIMED_GUIDE_NS", "TIMED_GUIDE_N", duration);
+                        SetNumberValues("TELESCOPE_TIMED_GUIDE_NS", ("TIMED_GUIDE_N", duration), ("TIMED_GUIDE_S", 0));
                         break;
                     case GuideDirections.guideSouth:
-                        SetNumberValue("TELESCOPE_TIMED_GUIDE_NS", "TIMED_GUIDE_S", duration);
+                        SetNumberValues("TELESCOPE_TIMED_GUIDE_NS", ("TIMED_GUIDE_N", 0), ("TIMED_GUIDE_S", duration));
                         break;
                     case GuideDirections.guideWest:
-                        SetNumberValue("TELESCOPE_TIMED_GUIDE_WE", "TIMED_GUIDE_W", duration);
+                        SetNumberValues("TELESCOPE_TIMED_GUIDE_WE", ("TIMED_GUIDE_W", duration), ("TIMED_GUIDE_E", 0));
                         break;
                     case GuideDirections.guideEast:
-                        SetNumberValue("TELESCOPE_TIMED_GUIDE_WE", "TIMED_GUIDE_E", duration);
+                        SetNumberValues("TELESCOPE_TIMED_GUIDE_WE", ("TIMED_GUIDE_W", 0), ("TIMED_GUIDE_E", duration));
                         break;
                 }
             } catch (ArgumentException ex) {

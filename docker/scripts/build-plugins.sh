@@ -33,6 +33,9 @@ plugin_spec() {
     nightsummary)   echo "https://github.com/nitr57/nina.plugin.nightsummary||nina.plugin.nightsummary|NINA.Plugin.NightSummary/NINA.Plugin.NightSummary.csproj|NINA.Plugin.NightSummary|" ;;
     orbuculum)      echo "https://github.com/nitr57/nina.plugin.orbuculum||nina.plugin.orbuculum|Orbuculum/Orbuculum.csproj|Orbuculum|" ;;
     phd2tools)      echo "https://github.com/nitr57/nina.plugin.phd2tools||nina.plugin.phd2tools|nina.plugin.phd2tools.csproj|Phd2 Tools|" ;;
+    # Native guider (private repo): build it from a local checkout via the local-plugins context
+    # (NINA.Plugins/pins-guider), e.g. BUILD_PLUGINS="... pins-guider".
+    pins-guider)    echo "https://github.com/aduffeck/pins-guider|main|pins-guider|src/PinsGuider.Plugin/PinsGuider.Plugin.csproj|PinsNativeGuider|" ;;
     tenmicron)      echo "https://github.com/nitr57/NINA.Joko.Plugin.TenMicron||NINA.Joko.Plugin.TenMicron|NINA.Joko.Plugin.TenMicron/NINA.Joko.Plugin.TenMicron.csproj|NINA.Joko.Plugin.TenMicron|java" ;;
     *) return 1 ;;
   esac

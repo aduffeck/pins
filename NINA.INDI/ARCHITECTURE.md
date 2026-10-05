@@ -77,6 +77,8 @@ Subclasses override `GetRequiredConnectionProperties`, `OnPreConnect`, and the `
 - `_getDriversSemaphore` serializes `GetDevices` so concurrent enumerations can't race driver load/unload.
 - `_operationLock` serializes socket writes; per-device `_asyncOperationsLock` guards the pending-async-operation map.
 - `ProcessXmlMessage` processes elements strictly sequentially, in wire order. INDI is a stateful, ordered stream (a `defXxxVector` must be applied before the `setXxxVector` that follows it in the same batch; consecutive coordinate updates must apply oldest-first), so do not parallelize this loop.
+- The one exception is `setBLOBVector` (camera images): `ProcessElementText` hands them to a worker that parses, decodes and applies them one after the other, so the updates behind a multi-megabyte image on the wire (guide pulses completing, exposure states, mount positions) don't wait for it. An image can therefore be applied after updates that followed it; `INDICamera` completes an exposure on the image itself, not on `CCD_EXPOSURE`'s state, so don't make image handling depend on that order.
+- `ProcessElement` decodes image payloads (`INDIProtocolParser.DecodeBlobs`) **before** taking `_lock` and only applies them under it, so `SetProperty` (e.g. a guide pulse) never waits for an image to be decoded.
 
 When adding behavior, respect which lock owns which state; the comments in `INDIClient.cs` document several non-obvious invariants (e.g. why driver eviction is scoped per NINA device-type category even when two categories share an INDI interface bit).
 

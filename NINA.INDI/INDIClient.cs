@@ -109,13 +109,40 @@ namespace NINA.INDI {
 
         // Private: the class manages a machine-wide indiserver (pkill on start, a fixed FIFO
         // path), so a second instance would fight the first. Use INDIClient.Instance.
-        private INDIClient(int port) {
+        private INDIClient(int port) : this(port, startServer: true) {
+        }
+
+        /// <summary>
+        /// Tests only: <paramref name="startServer"/> false leaves the machine's indiserver alone, and
+        /// the test attaches the client to its own fake server with <see cref="Connect"/>.
+        /// </summary>
+        internal INDIClient(int port, bool startServer) {
             if (port < 1 || port > 65535) {
                 throw new ArgumentOutOfRangeException(nameof(port), "Port must be between 1 and 65535.");
             }
 
             _port = port;
-            Task.Run(async () => await StartServerInFifoMode());
+            _managesServer = startServer;
+            if (startServer) {
+                Task.Run(async () => await StartServerInFifoMode());
+            } else {
+                _serverReadyTcs.SetResult(true);
+            }
+        }
+
+        // False for a test client: Dispose must then leave the machine's indiserver and FIFO alone.
+        private readonly bool _managesServer;
+
+        /// <summary>
+        /// Tests only: makes <see cref="Instance"/>, which every INDIDevice talks to, return this client.
+        /// Returns the previous instance to restore afterwards.
+        /// </summary>
+        internal static INDIClient SetInstanceForTests(INDIClient client) {
+            lock (_lock) {
+                var previous = _instance;
+                _instance = client;
+                return previous;
+            }
         }
 
         public bool IsConnected => _tcpClient?.Connected ?? false;
@@ -227,6 +254,13 @@ namespace NINA.INDI {
                 lock (_lock) {
                     _allProperties.Clear();
                 }
+
+                // Images still being applied belong to the old session too.
+                Task blobWork;
+                lock (_blobWorkLock) {
+                    blobWork = _blobWork;
+                }
+                blobWork.Wait(TimeSpan.FromSeconds(2));
                 Logger.Info("INDI client disconnected");
             } catch (Exception ex) {
                 Logger.Error($"Exception disconnecting from INDI server: {ex.Message}");
@@ -403,6 +437,13 @@ namespace NINA.INDI {
                     }
                     Logger.Debug($"Unregistered device: '{device.Id}'");
                 }
+            }
+        }
+
+        private bool HasRegisteredBlobProperty(string deviceName, string propertyName) {
+            lock (_lock) {
+                return _registeredDevices.TryGetValue(deviceName, out var devices) && devices.Count > 0
+                    && devices[0].GetProperty(propertyName) is INDIBlobProperty;
             }
         }
 
@@ -662,7 +703,9 @@ namespace NINA.INDI {
         public void Dispose() {
             Logger.Info("INDIClient.Dispose() starting cleanup");
             Disconnect();
-            CleanupServer();
+            if (_managesServer) {
+                CleanupServer();
+            }
             Logger.Info("INDIClient.Dispose() complete");
         }
 
@@ -1048,7 +1091,7 @@ namespace NINA.INDI {
                 // failure here is genuine corruption worth logging. (An earlier version
                 // filtered by exception message text, which is locale-dependent and silently
                 // swallowed real errors on non-English .NET locales.)
-                try { ProcessElement(XElement.Parse(xmlText)); } catch (Exception ex) {
+                try { ProcessElementText(xmlText); } catch (Exception ex) {
                     Logger.Error($"Error processing large element: {ex.Message}");
                 }
 
@@ -1143,12 +1186,13 @@ namespace NINA.INDI {
             if (elementsToProcess.Count > 0) {
                 // Must stay sequential: INDI is a stateful, ordered stream (e.g. a defXxxVector
                 // must be applied before the setXxxVector that follows it in the same batch).
+                // Images are the exception, see ProcessElementText.
                 // The scanner only emits elements whose closing tag was found, so parse errors
                 // here are genuine corruption and always logged (no filtering on the exception
                 // message — that text is locale-dependent).
                 foreach (var xmlText in elementsToProcess) {
                     try {
-                        ProcessElement(XElement.Parse(xmlText));
+                        ProcessElementText(xmlText);
                     } catch (Exception ex) {
                         Logger.Error($"Error processing element: {ex.Message}");
                     }
@@ -1156,9 +1200,42 @@ namespace NINA.INDI {
             }
         }
 
+        // Images are parsed, decoded and applied on a worker, one after the other in arrival order,
+        // so the receive loop moves on to the updates behind an image (guide pulses completing,
+        // exposure states) as soon as the image's bytes are read. An image can therefore be
+        // applied after updates that followed it on the wire; INDICamera completes an exposure on
+        // the image itself, not on CCD_EXPOSURE's state.
+        private Task _blobWork = Task.CompletedTask;
+        private readonly object _blobWorkLock = new();
+
+        private void ProcessElementText(string xmlText) {
+            if (!xmlText.StartsWith("<setBLOBVector", StringComparison.Ordinal)) {
+                ProcessElement(XElement.Parse(xmlText));
+                return;
+            }
+
+            lock (_blobWorkLock) {
+                _blobWork = _blobWork.ContinueWith(_ => {
+                    try {
+                        ProcessElement(XElement.Parse(xmlText));
+                    } catch (Exception ex) {
+                        Logger.Error($"Error processing BLOB element: {ex.Message}");
+                    }
+                }, TaskScheduler.Default);
+            }
+        }
+
         private void ProcessElement(XElement element) {
             var deviceName = element.Attribute("device")?.Value ?? string.Empty;
             var propertyName = element.Attribute("name")?.Value ?? string.Empty;
+
+            // Decode BLOB payloads before taking _lock: decoding a camera image takes hundreds of
+            // milliseconds on a Pi, and everything else that needs _lock (SetProperty, e.g. a
+            // guide pulse) would wait for it.
+            List<INDIProtocolParser.DecodedBlob> decodedBlobs = null;
+            if (element.Name.LocalName == "setBLOBVector" && HasRegisteredBlobProperty(deviceName, propertyName)) {
+                decodedBlobs = INDIProtocolParser.DecodeBlobs(element);
+            }
 
             lock (_lock) {
                 INDIProperty property;
@@ -1233,7 +1310,9 @@ namespace NINA.INDI {
                             // then notify all devices.
                             if (_registeredDevices.TryGetValue(deviceName, out var setBlobDevices) && setBlobDevices.Count > 0) {
                                 if (setBlobDevices[0].GetProperty(propertyName) is INDIBlobProperty bp) {
-                                    INDIProtocolParser.UpdateBlobProperty(bp, element);
+                                    // null only if the device registered while the payload was decoded
+                                    decodedBlobs ??= INDIProtocolParser.DecodeBlobs(element);
+                                    INDIProtocolParser.ApplyBlobUpdate(bp, element, decodedBlobs);
                                     foreach (var deviceInstance in setBlobDevices)
                                         deviceInstance.OnBlobPropertyUpdated(bp);
                                 }

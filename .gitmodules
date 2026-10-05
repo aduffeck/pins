@@ -1,15 +1,15 @@
 [submodule "Touch-N-Stars"]
 	path = Touch-N-Stars
-	url = https://github.com/Touch-N-Stars/Touch-N-Stars.git
-	branch = pins
+	url = https://github.com/aduffeck/Touch-N-Stars.git
+	branch = pins-guider
 [submodule "NINA.Plugins/ninaAPI"]
 	path = NINA.Plugins/ninaAPI
 	url = https://github.com/nitr57/ninaAPI.git
 	branch = dev
 [submodule "NINA.Plugins/Touch-N-Stars"]
 	path = NINA.Plugins/Touch-N-Stars
-	url = https://github.com/nitr57/N.I.N.A-Plugin-for-Touch-N-Stars.git
-	branch = main
+	url = https://github.com/aduffeck/N.I.N.A-Plugin-for-Touch-N-Stars.git
+	branch = pins-guider
 [submodule "NINA.Plugins/LiveStack"]
 	path = NINA.Plugins/LiveStack
 	url = https://github.com/nitr57/nina.plugin.livestack
@@ -33,3 +33,7 @@
 [submodule "NINA.Plugins/nina.plugin.phd2tools"]
 	path = NINA.Plugins/nina.plugin.phd2tools
 	url = https://github.com/nitr57/nina.plugin.phd2tools.git
+[submodule "NINA.Plugins/pins-guider"]
+	path = NINA.Plugins/pins-guider
+	url = git@github.com:aduffeck/pins-guider.git
+	branch = main
