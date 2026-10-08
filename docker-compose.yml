@@ -72,3 +72,34 @@ services:
       - /dev/ttyUSB0:/dev/ttyUSB0      # serial mounts / accessories present at start
     privileged: true
 
+  # Optional simulated rig for testing: Sky Simulator (mount, camera, guide
+  # camera, focuser, filter wheel, rotator; star fields rendered for where the
+  # mount points). Only started with its profile:
+  #   docker compose --profile skysim up -d
+  # In Touch-N-Stars select the INDI drivers "Sky Simulator ...". See
+  # docker/skysim/README.md.
+  skysim:
+    profiles: ["skysim"]
+    build:
+      context: docker/skysim
+      network: host
+    image: skysim:local
+    container_name: pins-skysim
+    restart: unless-stopped
+    init: true
+    # Sky Simulator's INDI (7625) and Alpaca (11111) servers listen on
+    # 127.0.0.1 only, so it shares the network namespace of the pins service
+    # (with whatever networking that one uses).
+    network_mode: "service:pins"
+    depends_on:
+      - pins
+    environment:
+      TZ: Europe/Berlin
+      # VNC view of the simulator GUI on this port; no password unless
+      # SKYSIM_VNC_PASSWORD is set (with host networking it is reachable from the LAN).
+      SKYSIM_VNC: "false"
+      SKYSIM_VNC_PORT: "5900"
+    volumes:
+      # Simulator settings (~/.config/sky_simulator) and its documents folder.
+      - ./data/skysim:/home/sim
+
