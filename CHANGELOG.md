@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## 1.1.62 - 2026-10-08
+### Fixed
+- INDI mounts: after a North guide pulse every South pulse also moved the mount North, and after a West pulse every East pulse moved it West, so guiding pushed the mount further off instead of correcting. pins sent only the requested direction of the guide property and left the opposite one at its last value; drivers built on the standard INDI guider interface pulse North (or West) whenever that value is not zero and never clear it after a pulse. Each pulse now sends both directions of the axis, the opposite one as 0
 ### Changed
 - Updated NINA to 3.3.0.1065-nightly
 - System.Windows.Compat: preparing an image for display, saving or the API (crop, rescale, pixel-format conversion, PNG/JPEG encoding, drawing one bitmap into another) no longer copies the full image at every step. These now read the source pixels in place, 16-bit pixel copies no longer go through a full-size temporary array, grayscale conversion releases its colour channels as soon as they are merged, and star blob detection no longer duplicates its input. An image fetched through the API at full scale used to make about five full-size copies, which on a Raspberry Pi meant noticeably higher memory use and garbage-collector load per frame

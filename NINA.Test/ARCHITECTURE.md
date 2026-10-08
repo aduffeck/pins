@@ -61,6 +61,8 @@ The general pattern in this project is:
 - mock high-level collaborators
 - instantiate real production objects when the behavior under test is inside the object itself
 
+`INDI/FakeIndiServer.cs` is a loopback stand-in for `indiserver`: it records what the client sends and sends raw INDI XML, so INDI device adapters can be tested on the wire. `INDI/INDITelescopePulseGuideTest.cs` shows the setup and teardown; see the `NINA.INDI` architecture notes for why the test client must never be swapped back to null.
+
 ## Test Assets
 
 `NINA.Test.csproj` copies sample files into the output directory, including:

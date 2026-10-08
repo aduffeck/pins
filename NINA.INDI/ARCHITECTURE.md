@@ -94,4 +94,5 @@ When adding behavior, respect which lock owns which state; the comments in `INDI
 - Maintain the `IINDIDevice` / per-type interfaces when adding capabilities; `NINA.Equipment` depends on them.
 - Do not add WPF or profile-setting dependencies here — keep the project portable and headless-friendly.
 - The server lifecycle assumes a Linux host with `indiserver`, `mkfifo`, and `pkill` available; treat that as a platform constraint.
+- Tests never let `INDIClient.Instance` create the real client: its first access starts `indiserver` after a `pkill`. They use `new INDIClient(port, startServer: false)` (whose `Dispose` leaves the machine's server alone) against `NINA.Test/INDI/FakeIndiServer`, swap it in with `INDIClient.SetInstanceForTests`, and on teardown restore the previous instance or keep the disposed test client, never null (`SetInstanceForTests` rejects null).
 - This project participates in the pins INDI control panel and INDI equipment integrations; cross-check the related pins project notes and `NINA.Equipment` when changing the property store or device adapters.

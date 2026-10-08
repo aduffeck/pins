@@ -109,13 +109,42 @@ namespace NINA.INDI {
 
         // Private: the class manages a machine-wide indiserver (pkill on start, a fixed FIFO
         // path), so a second instance would fight the first. Use INDIClient.Instance.
-        private INDIClient(int port) {
+        private INDIClient(int port) : this(port, startServer: true) {
+        }
+
+        /// <summary>
+        /// Tests only: <paramref name="startServer"/> false leaves the machine's indiserver alone, and
+        /// the test attaches the client to its own fake server with <see cref="Connect"/>.
+        /// </summary>
+        internal INDIClient(int port, bool startServer) {
             if (port < 1 || port > 65535) {
                 throw new ArgumentOutOfRangeException(nameof(port), "Port must be between 1 and 65535.");
             }
 
             _port = port;
-            Task.Run(async () => await StartServerInFifoMode());
+            _managesServer = startServer;
+            if (startServer) {
+                Task.Run(async () => await StartServerInFifoMode());
+            } else {
+                _serverReadyTcs.SetResult(true);
+            }
+        }
+
+        // False for a test client: Dispose must then leave the machine's indiserver and FIFO alone.
+        private readonly bool _managesServer;
+
+        /// <summary>
+        /// Tests only: makes <see cref="Instance"/>, which every INDIDevice talks to, return this client.
+        /// Returns the previous instance to restore afterwards. Never restore null: the next access to
+        /// <see cref="Instance"/> would then create a real client, which kills the machine's indiserver.
+        /// </summary>
+        internal static INDIClient SetInstanceForTests(INDIClient client) {
+            ArgumentNullException.ThrowIfNull(client);
+            lock (_lock) {
+                var previous = _instance;
+                _instance = client;
+                return previous;
+            }
         }
 
         public bool IsConnected => _tcpClient?.Connected ?? false;
@@ -662,7 +691,9 @@ namespace NINA.INDI {
         public void Dispose() {
             Logger.Info("INDIClient.Dispose() starting cleanup");
             Disconnect();
-            CleanupServer();
+            if (_managesServer) {
+                CleanupServer();
+            }
             Logger.Info("INDIClient.Dispose() complete");
         }
 
