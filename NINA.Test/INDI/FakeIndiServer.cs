@@ -76,12 +76,16 @@ namespace NINA.Test.INDI {
             private readonly TcpClient tcp;
             private readonly NetworkStream stream;
             private readonly StringBuilder received = new();
+            private readonly TaskCompletionSource closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
             public Connection(TcpClient tcp) {
                 this.tcp = tcp;
                 stream = tcp.GetStream();
                 _ = ReadLoopAsync();
             }
+
+            /// <summary>Completes once the client has closed this connection (or it was closed here).</summary>
+            public Task Closed => closed.Task;
 
             /// <summary>Everything the client has sent on this connection so far.</summary>
             public string Received {
@@ -108,6 +112,7 @@ namespace NINA.Test.INDI {
                 } catch (Exception) {
                     // closed
                 }
+                closed.TrySetResult();
             }
 
             public void Send(string xml) {
