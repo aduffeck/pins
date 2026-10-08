@@ -102,10 +102,6 @@ namespace NINA.Test.SystemWindowsCompat {
             Assert.Throws<ArgumentException>(() => source.CopyPixels(new byte[4], 4, 0));
         }
 
-        // REVIEW.md F8: BitmapSource(Mat) takes ownership of the Mat directly without cloning
-        // (unlike CroppedBitmap/BitmapSource(Mat,Rectangle), which always clone their ROI). A raw,
-        // un-cloned OpenCvSharp ROI view is non-continuous - its rows have padding between them
-        // equal to the parent's extra width - so CopyPixels must not assume one flat memcpy.
         // CopyPixels(ushort[]) copies straight into the caller's array (no temporary byte[]);
         // offset counts elements, not bytes, and data before it must stay untouched.
         [Test]
@@ -151,6 +147,10 @@ namespace NINA.Test.SystemWindowsCompat {
             Assert.That(output, Is.EqualTo(new ushort[] { 100, 200, 300, 400 }));
         }
 
+        // REVIEW.md F8: BitmapSource(Mat) takes ownership of the Mat directly without cloning
+        // (unlike CroppedBitmap/BitmapSource(Mat,Rectangle), which always clone their ROI). A raw,
+        // un-cloned OpenCvSharp ROI view is non-continuous - its rows have padding between them
+        // equal to the parent's extra width - so CopyPixels must not assume one flat memcpy.
         [Test]
         public void CopyPixels_NonContinuousMat_RowByRowFallback_CopiesCorrectly() {
             using var parent = new OpenCvSharp.Mat(4, 6, OpenCvSharp.MatType.CV_8UC1);

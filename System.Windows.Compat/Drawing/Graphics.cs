@@ -196,7 +196,9 @@ namespace System.Drawing {
         /// </summary>
         private System.Windows.Media.Imaging.MatLease LeaseSource(Bitmap image) {
             Mat source = image;
-            if (source != null && _canvas != null && SharesMemory(source, _canvas)) {
+            // Empty checks first, in the order the callers make them, so a disposed or empty
+            // image fails (or returns early) exactly as it did before the overlap check existed.
+            if (source != null && !source.Empty() && _canvas != null && !_canvas.Empty() && SharesMemory(source, _canvas)) {
                 return new System.Windows.Media.Imaging.MatLease(image.GetMat(), owned: true);
             }
             return new System.Windows.Media.Imaging.MatLease(source, owned: false);
@@ -205,14 +207,10 @@ namespace System.Drawing {
         /// <summary>
         /// Whether two Mats' underlying buffers overlap. Compares the whole allocations
         /// (DataStart..DataLimit), not just the visible regions, so ROI views are caught too.
+        /// Both Mats must be non-empty.
         /// </summary>
         private static bool SharesMemory(Mat a, Mat b) {
-            long aStart = a.DataStart.ToInt64();
-            long bStart = b.DataStart.ToInt64();
-            if (aStart == 0 || bStart == 0) {
-                return false; // empty Mat, no buffer
-            }
-            return aStart < b.DataLimit.ToInt64() && bStart < a.DataLimit.ToInt64();
+            return a.DataStart.ToInt64() < b.DataLimit.ToInt64() && b.DataStart.ToInt64() < a.DataLimit.ToInt64();
         }
 
         /// <summary>

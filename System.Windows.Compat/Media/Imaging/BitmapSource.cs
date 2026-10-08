@@ -164,10 +164,11 @@ namespace System.Windows.Media.Imaging {
             if (!IsFrozen || this is WriteableBitmap || this is RenderTargetBitmap) {
                 return null;
             }
-            if (_mat == null || _mat.CvPtr == _foreignMatPtr || _mat.Empty() || _mat.Dims != 2 || !_mat.IsContinuous()) {
+            Mat mat = _mat;
+            if (mat == null || mat.CvPtr == _foreignMatPtr || mat.Empty() || mat.Dims != 2 || !mat.IsContinuous()) {
                 return null;
             }
-            return new Mat(_mat, new OpenCvSharp.Rect(0, 0, _mat.Cols, _mat.Rows));
+            return new Mat(mat, new OpenCvSharp.Rect(0, 0, mat.Cols, mat.Rows));
         }
 
         public override void Freeze() {
