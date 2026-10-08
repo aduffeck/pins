@@ -27,6 +27,12 @@ The project keeps both interface and implementation types:
 
 `Settings.cs` is the abstract base for settings sections.
 
+## Guide Camera Settings (pins)
+
+`Profile.GuideCameraSettings` is a second `CameraSettings` section for the guide camera. `GuideCameraProfileService` wraps the real `IProfileService` so that its `ActiveProfile.CameraSettings` is that section and every other member is the real service's. Its `ActiveProfile` is one view object that follows profile switches, and it raises the real service's events with itself as sender, wrapping both profiles of `ProfileChangedEventArgs` in guide views.
+
+Camera classes, `PersistSettingsCameraDecorator`, `CameraVM`, `CameraChooserVM` and `INDIInteraction` reach camera settings only through `ActiveProfile.CameraSettings`, so the guide camera stack is built with this service instead of changing those classes. Keep it that way: a camera that cached its settings object, or read them some other way, would silently share the imaging camera's settings. `GuideCameraProfileServiceTest` checks by reflection that only `CameraSettings` differs from the real profile, so a section upstream adds to `IProfile` must also be forwarded in the view, which fails to compile until it is.
+
 ## Profile Lifecycle
 
 `ProfileService.cs` is the operational core.
