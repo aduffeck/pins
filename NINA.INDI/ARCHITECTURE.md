@@ -78,7 +78,7 @@ Subclasses override `GetRequiredConnectionProperties`, `OnPreConnect`, and the `
 - `_operationLock` serializes socket writes; per-device `_asyncOperationsLock` guards the pending-async-operation map.
 - `ProcessXmlMessage` processes elements strictly sequentially, in wire order. INDI is a stateful, ordered stream (a `defXxxVector` must be applied before the `setXxxVector` that follows it in the same batch; consecutive coordinate updates must apply oldest-first), so do not parallelize this loop.
 
-When adding behavior, respect which lock owns which state; the comments in `INDIClient.cs` document several non-obvious invariants (e.g. why driver eviction is scoped per NINA device-type category even when two categories share an INDI interface bit).
+When adding behavior, respect which lock owns which state; the comments in `INDIClient.cs` document several non-obvious invariants (e.g. why driver eviction is scoped per NINA device-type category even when two categories share an INDI interface bit, and why a category's previous driver is only unloaded once no other category still uses it).
 
 ## Dependency Position
 

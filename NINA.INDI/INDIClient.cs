@@ -87,9 +87,11 @@ namespace NINA.INDI {
         private readonly HashSet<string> _loadedDrivers = [];
 
         // Maps NINA device-type category name (e.g. "WeatherData", "SafetyMonitor") to the
-        // driver that was last loaded for that category.  Eviction during a rescan only touches
-        // the driver previously loaded for the SAME category, so two categories that share an
-        // INDI interface flag (e.g. WEATHER_INTERFACE) never evict each other's drivers.
+        // driver last requested for that category, whether this request loaded it or another
+        // category already had. Eviction during a rescan only touches the driver previously used
+        // by the SAME category, and only when no other category still uses it, so two categories
+        // never evict each other's drivers: neither when they share an INDI interface flag (e.g.
+        // WEATHER_INTERFACE) nor when they share a driver (e.g. mount and focuser on indi_lx200_OnStep).
         private readonly Dictionary<string, string> _lastDriverPerCategory = [];
 
         // Global property store: deviceName -> (propertyName -> property). Captures every property
@@ -132,6 +134,12 @@ namespace NINA.INDI {
 
         // False for a test client: Dispose must then leave the machine's indiserver and FIFO alone.
         private readonly bool _managesServer;
+
+        /// <summary>
+        /// Tests only: receives the driver start/stop commands of a client created with startServer false,
+        /// which never writes to the machine's FIFO.
+        /// </summary>
+        internal Action<string> FifoCommandsForTests { get; set; }
 
         /// <summary>
         /// Tests only: makes <see cref="Instance"/>, which every INDIDevice talks to, return this client.
@@ -380,6 +388,12 @@ namespace NINA.INDI {
         /// so a dead server can never freeze the caller (or, more importantly, any lock it holds).
         /// </summary>
         private bool WriteFifoCommand(string command, TimeSpan timeout) {
+            if (!_managesServer) {
+                // A test client never writes to the machine's FIFO, which may belong to a running indiserver.
+                FifoCommandsForTests?.Invoke(command);
+                return true;
+            }
+
             try {
                 // When the open() blocks past the timeout the task is abandoned but stays
                 // stuck in the syscall. If a reader appears much later (indiserver restart),
@@ -591,21 +605,32 @@ namespace NINA.INDI {
                     // was previously loaded for THIS specific NINA device-type category.
                     // This prevents a SafetyMonitor rescan from evicting a WeatherData driver
                     // even though both share WEATHER_INTERFACE.
+                    // Record the category's driver even when it is already loaded (e.g. started by
+                    // another category with the same driver): eviction below must know every
+                    // category a driver serves, or a mount and a focuser on indi_lx200_OnStep would
+                    // lose their shared driver as soon as either of them switches to another one.
+                    // Only GetDevices touches _lastDriverPerCategory, serialized by the semaphore.
+                    if (deviceTypeCategory != null) {
+                        if (_lastDriverPerCategory.TryGetValue(deviceTypeCategory, out string oldDriver) && oldDriver != driver) {
+                            var stillUsedBy = _lastDriverPerCategory
+                                .Where(c => c.Key != deviceTypeCategory && c.Value == oldDriver)
+                                .Select(c => c.Key)
+                                .ToList();
+                            if (stillUsedBy.Count > 0) {
+                                Logger.Info($"Keeping previous {deviceTypeCategory} driver '{oldDriver}', still used by {string.Join(", ", stillUsedBy)}");
+                            } else {
+                                Logger.Info($"Evicting previous {deviceTypeCategory} driver '{oldDriver}' before loading '{driver}'");
+                                UnloadDriver(oldDriver);
+                            }
+                        }
+                        _lastDriverPerCategory[deviceTypeCategory] = driver;
+                    }
+
                     bool driverAlreadyLoaded;
                     lock (_driverLock) {
                         driverAlreadyLoaded = _loadedDrivers.Contains(driver);
                     }
                     if (!driverAlreadyLoaded) {
-                        if (deviceTypeCategory != null
-                            && _lastDriverPerCategory.TryGetValue(deviceTypeCategory, out string oldDriver)
-                            && oldDriver != driver) {
-                            Logger.Info($"Evicting previous {deviceTypeCategory} driver '{oldDriver}' before loading '{driver}'");
-                            UnloadDriver(oldDriver);
-                        }
-                        if (deviceTypeCategory != null) {
-                            _lastDriverPerCategory[deviceTypeCategory] = driver;
-                        }
-
                         ct.ThrowIfCancellationRequested();
 
                         // Use LoadDriver's default (15s) DRIVER_INFO wait. A 3s override used
