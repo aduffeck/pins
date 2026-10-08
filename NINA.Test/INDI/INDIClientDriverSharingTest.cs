@@ -100,6 +100,26 @@ namespace NINA.Test.INDI {
             Assert.That(Commands(), Is.EqualTo(new[] { $"start {Asi}", $"stop {Asi}", $"start {ToupTek}" }));
         }
 
+        [Test]
+        public async Task UnloadingADriver_ClosesItsDevicesImageConnections() {
+            await ScanAsync("Camera", Asi);
+            client.EnableBLOB(DeviceOf(Asi));
+            var asiImages = await server.NextConnectionAsync(Timeout);
+            await asiImages.WaitForAsync("Only", Timeout);
+            await ScanAsync("GuideCamera", ToupTek);
+            client.EnableBLOB(DeviceOf(ToupTek));
+            var toupTekImages = await server.NextConnectionAsync(Timeout);
+            await toupTekImages.WaitForAsync("Only", Timeout);
+
+            await ScanAsync("Camera", PlayerOne);
+
+            Assert.That(await Task.WhenAny(asiImages.Closed, Task.Delay(Timeout)), Is.SameAs(asiImages.Closed));
+            Assert.That(async () => await server.NextConnectionAsync(TimeSpan.FromMilliseconds(500)),
+                Throws.InstanceOf<OperationCanceledException>(), "the closed connection is not reopened");
+            Assert.That(main.Received, Does.Not.Contain("enableBLOB"), "nor does it fall back to the main connection");
+            Assert.That(toupTekImages.Closed.IsCompleted, Is.False, "the guide camera's driver is still loaded");
+        }
+
         private async Task<List<string>> ScanAsync(string category, string driver) {
             var devices = await client.GetDevices(DeviceInterface.CCD_INTERFACE, driver, category);
             return devices.Select(d => d.Id).ToList();

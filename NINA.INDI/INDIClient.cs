@@ -370,16 +370,19 @@ namespace NINA.INDI {
                 return;
             }
 
+            List<string> devicesToRemove;
             lock (_driverLock) {
                 _loadedDrivers.Remove(driverName);
 
                 // Remove devices associated with this driver
-                var devicesToRemove = _discoveredDevices.Where(d => d.Value.Driver == driverName).Select(d => d.Key).ToList();
+                devicesToRemove = _discoveredDevices.Where(d => d.Value.Driver == driverName).Select(d => d.Key).ToList();
                 foreach (var deviceKey in devicesToRemove) {
                     _discoveredDevices.Remove(deviceKey);
                     Logger.Debug($"Removed device '{deviceKey}' (driver: {driverName})");
                 }
             }
+            // Their devices are gone, so their image connections would only idle until Disconnect.
+            CloseBlobConnectionsOf(devicesToRemove);
             Logger.Info($"Unloaded driver '{driverName}'");
         }
 
@@ -604,7 +607,7 @@ namespace NINA.INDI {
         private void OnBlobConnectionEnded(BlobConnection connection) {
             lock (_blobConnectionsLock) {
                 if (!_blobConnections.TryGetValue(connection.Device, out var current) || current != connection) {
-                    // Closed by Disconnect, which disposes it.
+                    // Closed by Disconnect or a driver unload, which dispose it.
                     return;
                 }
                 _blobConnections.Remove(connection.Device);
@@ -636,6 +639,24 @@ namespace NINA.INDI {
                 connections = _blobConnections.Values.ToList();
                 _blobConnections.Clear();
             }
+            CloseAndWait(connections);
+        }
+
+        private void CloseBlobConnectionsOf(IEnumerable<string> devices) {
+            var connections = new List<BlobConnection>();
+            lock (_blobConnectionsLock) {
+                foreach (var device in devices) {
+                    // Removed first, so OnBlobConnectionEnded neither reopens it nor falls back to the main connection.
+                    if (_blobConnections.Remove(device, out var connection)) {
+                        connections.Add(connection);
+                        Logger.Info($"INDI: closing the image connection of '{device}', its driver was unloaded");
+                    }
+                }
+            }
+            CloseAndWait(connections);
+        }
+
+        private static void CloseAndWait(List<BlobConnection> connections) {
             foreach (var connection in connections) {
                 connection.Cts.Cancel();
                 connection.Tcp.Close();
