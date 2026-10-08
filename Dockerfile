@@ -334,6 +334,11 @@ COPY --chmod=440 docker/sudoers-pins /etc/sudoers.d/pins
 COPY docker/supervisord.conf /etc/pins/supervisord.conf
 COPY --from=indi /indi-root/ /
 COPY --from=indi3p /indi3p-root/ /
+# Relay drivers for the Sky Simulator sidecar (docker/skysim); inert without it.
+COPY --chmod=755 docker/skysim/indi_skysimulator /usr/local/bin/indi_skysimulator
+COPY docker/skysim/skysimulator.xml /usr/share/indi/skysimulator.xml
+RUN ln -s indi_skysimulator /usr/local/bin/indi_skysimulator_ccd \
+ && ln -s indi_skysimulator /usr/local/bin/indi_skysimulator_guide
 COPY --from=phd2 /phd2-root/ /
 COPY --from=indi /runtime-packages.txt /tmp/pins-deps/indi.txt
 COPY --from=indi3p /runtime-packages.txt /tmp/pins-deps/indi3p.txt
