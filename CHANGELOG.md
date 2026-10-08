@@ -4,19 +4,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.1.62 - 2026-10-08
+### Changed
+- Updated NINA to 3.3.0.1065-nightly
+- System.Windows.Compat: preparing an image for display, saving or the API (crop, rescale, pixel-format conversion, PNG/JPEG encoding, drawing one bitmap into another) no longer copies the full image at every step. These now read the source pixels in place, 16-bit pixel copies no longer go through a full-size temporary array, grayscale conversion releases its colour channels as soon as they are merged, and star blob detection no longer duplicates its input. An image fetched through the API at full scale used to make about five full-size copies, which on a Raspberry Pi meant noticeably higher memory use and garbage-collector load per frame
+- System.Windows.Compat: added the surface NINA 3.3.0.1065 needs to build headless: `BitmapSource.Clone`, `CopyPixels` into a managed array at an element offset, `Colors.Lime`, `Dispatcher.FromThread` and the `Dispatcher.InvokeAsync` overloads returning a `DispatcherOperation`. `NINA.Sequencer` no longer compiles the linked-template preview behaviors and `NINA.Test` no longer compiles the upstream tests that need the WPF view layer, so the solution builds again
+
+## 1.1.61 - 2026-09-28
+### Changed
+- The plugin sources under `NINA.Plugins/` and the Touch-N-Stars app are no longer git submodules of this repository; local checkouts in those folders, `NINA/External` and `pinsdaemon` are ignored by git
+
+## 1.1.60 - 2026-09-24
+### Fixed
+- HocusFocus auto-focus runs cropped every frame to NINA's inner crop ratio even with HocusFocus's **Use AutoFocus Crop** off. pins always uses HocusFocus for star detection, star annotation and auto-focus, but never saved that choice in the profile; HocusFocus's star detection reads the profile to tell its own auto-focus from NINA's, found no choice there and treated its own runs as NINA's. pins now saves HocusFocus as the profile's choice for all three whenever it is loaded, and again after every profile switch
+
+## 1.1.59 - 2026-09-21
+### Added
+- `rawCommandBatch` can now also batch the LX200 commands that answer with a single character and no `#` (on 10micron `:Guaf#`, `:Gdat#`, `:GREF#`). The caller appends a mask such as `:Guaf#:GT#|cs` saying how each reply ends; without a mask every reply is still read up to its `#` as before. The 10micron plugin's status poll uses this to read its nine values in one round trip instead of nine, which previously kept the mount busy for about two seconds of every polling interval, including during slews and model builds
+### Changed
+- Updated NINA to 3.3.0.1058-nightly
+
 ## 1.1.58 - 2026-09-18
 ### Fixed
 - INDI mounts: a goto the driver refused was not recognized as refused when the refusal arrived within the same second as the last position update, which is the normal case for a driver that answers within milliseconds. It was taken for a stale Alert left over from earlier, so each such goto waited 15 s for a reply and for motion that never came and was then treated as done, instead of being reported as refused at once. An Alert now only counts as stale when the mount's coordinates were already in Alert before the goto was sent
 - 10micron model builder: after a build started from an unparked mount, the builder slewed back to the start position even when that position was below the mount's horizon limit, e.g. right after unparking by hand. The mount refused the goto, and on a network (TCP) connection the INDI LX200 driver then lost track of the mount's replies: every later goto was misread as refused while the mount still carried some of them out, giving trailed frames in the next build, or the mount stopped moving altogether until it was reconnected. The builder now reads the mount's horizon limit (`:Go#`) and only returns to the start position when it lies at least 1° above it, otherwise it leaves the telescope where it is and shows a warning
 - INDI devices on a network (TCP) connection could fail with `Error! Server address is missing or invalid.` although address and port were configured: pins checked only once, before the connection mode was applied, whether the driver had a `DEVICE_ADDRESS` property, and a driver still in serial mode was remembered as having none. Transport properties are now re-checked after the mode switch, for serial, network and HTTP alike
 - Altair, Ogma, Omegon, MallinCam, Risingcam and SVBony cameras could not connect, failing with a `NullReferenceException` in `put_Option`: the SDK bindings passed the camera id to the native library as a UTF-16 string on Linux, so the SDK saw only its first character, found no camera and returned no handle, which went unnoticed until the first option was set. The id is now passed as a plain C string, as the ToupTek binding already did. A camera, filter wheel or focuser of these brands that cannot be opened now reports "Could not open ..." instead of crashing
-- HocusFocus auto-focus runs cropped every frame to NINA's inner crop ratio even with HocusFocus's **Use AutoFocus Crop** off. pins always uses HocusFocus for star detection, star annotation and auto-focus, but never saved that choice in the profile; HocusFocus's star detection reads the profile to tell its own auto-focus from NINA's, found no choice there and treated its own runs as NINA's. pins now saves HocusFocus as the profile's choice for all three whenever it is loaded, and again after every profile switch
 
 ### Added
 - INDI mounts on a network (TCP) connection expose a `rawCommandBatch` action that sends several raw LX200 commands in one write, so a plugin reading many values at once pays one round trip instead of one per command
-- `rawCommandBatch` can now also batch the LX200 commands that answer with a single character and no `#` (on 10micron `:Guaf#`, `:Gdat#`, `:GREF#`). The caller appends a mask such as `:Guaf#:GT#|cs` saying how each reply ends; without a mask every reply is still read up to its `#` as before. The 10micron plugin's status poll uses this to read its nine values in one round trip instead of nine, which previously kept the mount busy for about two seconds of every polling interval, including during slews and model builds
-### Changed
-- Updated NINA to 3.3.0.1058-nightly
 
 ## 1.1.57 - 2026-09-15
 ### Fixed
