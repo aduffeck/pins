@@ -91,8 +91,14 @@ namespace NINA.INDI.Devices {
             base.OnTextPropertyUpdated(p);
         }
 
-        private bool _isPulseGuidingNS;
-        private bool _isPulseGuidingWE;
+        // Initialized here, not in the constructor: the base constructor already receives the driver's properties.
+        private readonly PulseGuideTracker _pulseGuide = new();
+
+        // A driver that never reports the end of its guide pulses times out on every pulse; warn at most this often.
+        private static readonly TimeSpan PulseGuideTimeoutWarningInterval = TimeSpan.FromMinutes(10);
+        private readonly object _pulseGuideTimeoutLock = new();
+        private DateTime _lastPulseGuideTimeoutWarning = DateTime.MinValue;
+        private int _pulseGuideTimeoutsSinceWarning;
 
         // Coordinate-motion tracking for the Slewing property. Some firmwares (observed on
         // OnStep while homing) move the mount without reporting a slew on ANY property state,
@@ -125,11 +131,9 @@ namespace NINA.INDI.Devices {
             base.OnNumberPropertyUpdated(p);
 
             switch (p.Name) {
-                case "TELESCOPE_TIMED_GUIDE_NS":
-                    _isPulseGuidingNS = p.State == PropertyState.Busy;
-                    break;
-                case "TELESCOPE_TIMED_GUIDE_WE":
-                    _isPulseGuidingWE = p.State == PropertyState.Busy;
+                case PulseGuideTracker.NorthSouth:
+                case PulseGuideTracker.WestEast:
+                    _pulseGuide.Observe(p);
                     break;
                 case "EQUATORIAL_EOD_COORD":
                     Volatile.Read(ref _pendingGoto)?.Observe(p);
@@ -189,6 +193,30 @@ namespace NINA.INDI.Devices {
         }
 
         public INDITelescope(INDIDeviceInfo device) : base(device) {
+            _pulseGuide.TimedOut += ReportPulseGuideTimeout;
+        }
+
+        private void ReportPulseGuideTimeout(string property, int durationMs) {
+            bool warn;
+            int count;
+            lock (_pulseGuideTimeoutLock) {
+                count = ++_pulseGuideTimeoutsSinceWarning;
+                var now = DateTime.UtcNow;
+                warn = now - _lastPulseGuideTimeoutWarning >= PulseGuideTimeoutWarningInterval;
+                if (warn) {
+                    _lastPulseGuideTimeoutWarning = now;
+                    _pulseGuideTimeoutsSinceWarning = 0;
+                }
+            }
+
+            var message = $"[{DeviceName}] The driver did not report the end of a {durationMs} ms guide pulse on {property} "
+                + $"within {PulseGuideTracker.CompletionMargin.TotalMilliseconds:F0} ms of when it should have ended; treating it as finished";
+            if (warn) {
+                Logger.Warning($"{message}. With this driver the next guide exposure may start while the mount still moves "
+                    + $"({count} such pulse(s) since the last warning; further ones are logged at Debug level for {PulseGuideTimeoutWarningInterval.TotalMinutes:F0} minutes)");
+            } else {
+                Logger.Debug(message);
+            }
         }
 
         public AlignmentMode AlignmentMode { get; }
@@ -287,10 +315,8 @@ namespace NINA.INDI.Devices {
                 SetNumberValue("GUIDE_RATE", "GUIDE_RATE_WE", value / SiderealDegPerSec);
             }
         }
-        // Tracked from TELESCOPE_TIMED_GUIDE_NS/WE Busy state (see OnNumberPropertyUpdated) —
-        // INDI has no dedicated "is guiding" flag, so a pulse counts as in-progress for exactly
-        // as long as the driver reports the corresponding guide vector as Busy.
-        public bool IsPulseGuiding => _isPulseGuidingNS || _isPulseGuidingWE;
+        // True from the moment PulseGuide sends a pulse until the driver reports its end, bounded (see PulseGuideTracker).
+        public bool IsPulseGuiding => _pulseGuide.IsPulseGuiding;
         public double RightAscension => GetNumberPropertyValue("EQUATORIAL_EOD_COORD", "RA") ?? double.NaN;
         public double RightAscensionRate { get; set; }
         public PierSide SideOfPier {
@@ -846,23 +872,24 @@ namespace NINA.INDI.Devices {
             // pulses N (or W) whenever that value is non-zero, and GuideComplete never resets the
             // values, so a lone S (or E) after an N (or W) pulse would be sent with the stale N
             // still in the cached vector and guide the wrong way.
+            var (property, values) = direction switch {
+                GuideDirections.guideNorth => (PulseGuideTracker.NorthSouth, new[] { ("TIMED_GUIDE_N", (double)duration), ("TIMED_GUIDE_S", 0.0) }),
+                GuideDirections.guideSouth => (PulseGuideTracker.NorthSouth, new[] { ("TIMED_GUIDE_N", 0.0), ("TIMED_GUIDE_S", (double)duration) }),
+                GuideDirections.guideWest => (PulseGuideTracker.WestEast, new[] { ("TIMED_GUIDE_W", (double)duration), ("TIMED_GUIDE_E", 0.0) }),
+                GuideDirections.guideEast => (PulseGuideTracker.WestEast, new[] { ("TIMED_GUIDE_W", 0.0), ("TIMED_GUIDE_E", (double)duration) }),
+                _ => throw new ArgumentOutOfRangeException(nameof(direction), direction, null)
+            };
+
+            // Mark the axis before sending: the driver's Busy may arrive before SetNumberValues returns.
+            _pulseGuide.PulseSending(property, duration);
             try {
-                switch (direction) {
-                    case GuideDirections.guideNorth:
-                        SetNumberValues("TELESCOPE_TIMED_GUIDE_NS", ("TIMED_GUIDE_N", duration), ("TIMED_GUIDE_S", 0));
-                        break;
-                    case GuideDirections.guideSouth:
-                        SetNumberValues("TELESCOPE_TIMED_GUIDE_NS", ("TIMED_GUIDE_N", 0), ("TIMED_GUIDE_S", duration));
-                        break;
-                    case GuideDirections.guideWest:
-                        SetNumberValues("TELESCOPE_TIMED_GUIDE_WE", ("TIMED_GUIDE_W", duration), ("TIMED_GUIDE_E", 0));
-                        break;
-                    case GuideDirections.guideEast:
-                        SetNumberValues("TELESCOPE_TIMED_GUIDE_WE", ("TIMED_GUIDE_W", 0), ("TIMED_GUIDE_E", duration));
-                        break;
-                }
+                SetNumberValues(property, values);
             } catch (ArgumentException ex) {
+                _pulseGuide.PulseNotSent(property);
                 throw new NotImplementedException(ex.Message, ex);
+            } catch {
+                _pulseGuide.PulseNotSent(property);
+                throw;
             }
         }
 

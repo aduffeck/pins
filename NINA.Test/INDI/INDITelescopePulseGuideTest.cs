@@ -101,6 +101,22 @@ namespace NINA.Test.INDI {
             Assert.That(SentVectors(main.Received, otherAxis), Is.Empty);
         }
 
+        [Test]
+        public async Task IsPulseGuiding_FromSendingThePulse_UntilTheDriverReportsItsEnd() {
+            var telescope = await RegisterTelescopeAsync();
+
+            telescope.PulseGuide(GuideDirections.guideNorth, 2000);
+            Assert.That(telescope.IsPulseGuiding, Is.True, "before the driver has answered");
+
+            await main.WaitUntilAsync(r => SentVectors(r, "TELESCOPE_TIMED_GUIDE_NS").Count == 1, "the pulse is sent", Timeout);
+            var sent = SentVectors(main.Received, "TELESCOPE_TIMED_GUIDE_NS")[0];
+            await ApplyDriverUpdateAsync(telescope, SetGuideVector("TELESCOPE_TIMED_GUIDE_NS", "Busy", sent));
+            Assert.That(telescope.IsPulseGuiding, Is.True, "while the driver reports Busy");
+
+            await ApplyDriverUpdateAsync(telescope, SetGuideVector("TELESCOPE_TIMED_GUIDE_NS", "Idle", sent));
+            Assert.That(telescope.IsPulseGuiding, Is.False, "once the driver reports the end");
+        }
+
         private async Task<INDITelescope> RegisterTelescopeAsync() {
             var create = Task.Run(() => new INDITelescope(new INDIDeviceInfo { Id = Mount, Name = Mount, Interface = DeviceInterface.TELESCOPE_INTERFACE }));
             // The new device asks for its properties and waits for CONNECTION.
