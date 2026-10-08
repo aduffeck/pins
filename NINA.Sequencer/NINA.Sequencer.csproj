@@ -16,6 +16,8 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
+    <Compile Remove="Behaviors\LinkedTemplateFallbackPreviewBehavior.cs" />
+    <Compile Remove="Behaviors\LinkedTemplatePreviewBehavior.cs" />
     <Compile Remove="Behaviors\SequenceEditBehavior.cs" />
     <Compile Remove="Editing\PendingSequenceEdit.cs" />
   </ItemGroup>

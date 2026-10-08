@@ -19,6 +19,7 @@ using NINA.Core.Utility.WindowService;
 using NINA.Equipment.Equipment.MyGuider;
 using NINA.Equipment.Equipment.MyGuider.MetaGuide;
 using NINA.Equipment.Equipment.MyGuider.PHD2;
+using NINA.Equipment.Interfaces.Mediator;
 using NINA.Profile.Interfaces;
 using System.Collections.Concurrent;
 using System.Reflection;
@@ -29,7 +30,7 @@ namespace NINA.Test.Equipment {
         [TestCase(false)]
         [TestCase(true)]
         public void Phd2GetLockPosition_DeferredResponseCompletesWithoutPumpingCallerContext(bool transportFails) {
-            var guider = new PHD2Guider(Mock.Of<IProfileService>(), Mock.Of<IWindowServiceFactory>());
+            var guider = new PHD2Guider(Mock.Of<IProfileService>(), Mock.Of<IWindowServiceFactory>(), Mock.Of<ITelescopeMediator>());
             using var writer = new StreamWriter(new MemoryStream());
             SetField(guider, "_connected", true);
             SetField(guider, "_writer", writer);

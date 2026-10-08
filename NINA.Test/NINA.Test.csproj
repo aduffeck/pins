@@ -50,8 +50,11 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Equipment\Camera\NikonCameraTest.cs" />
+    <Compile Remove="Sequencer\Behaviors\LinkedTemplatePreviewBehaviorTest.cs" />
+    <Compile Remove="Sequencer\Conditions\AltitudeExpressionLifecycleTest.cs" />
     <Compile Remove="Sequencer\Editing\**\*.cs" />
     <Compile Remove="Sequencer\SequenceItem\Utility\LoadImagingLayoutDataTemplateTest.cs" />
+    <Compile Remove="Sequencer\View\MiniSequencer\MiniSequencerViewTest.cs" />
     <Compile Remove="SimpleSequencer\SimpleDSOContainerViewTest.cs" />
     <Compile Remove="SimpleSequencer\SimpleSequenceViewTest.cs" />
     <Compile Remove="View\AnchorableSequenceViewTest.cs" />

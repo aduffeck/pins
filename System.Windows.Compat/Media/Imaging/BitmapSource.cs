@@ -171,6 +171,13 @@ namespace System.Windows.Media.Imaging {
             return new Mat(mat, new OpenCvSharp.Rect(0, 0, mat.Cols, mat.Rows));
         }
 
+        /// <summary>
+        /// An unfrozen deep copy, as in WPF.
+        /// </summary>
+        public BitmapSource Clone() {
+            return new BitmapSource(_mat.Clone(), foreignMat: false) { DpiX = DpiX, DpiY = DpiY };
+        }
+
         public override void Freeze() {
             // In WPF, Freeze makes objects immutable for thread safety
             // For OpenCV Mat, this is a no-op since Mat is already thread-safe for reading
@@ -240,6 +247,26 @@ namespace System.Windows.Media.Imaging {
                 CopyPixels(ushortArray, stride, offset);
             } else {
                 throw new NotSupportedException($"Array type {pixels.GetType()} not supported");
+            }
+        }
+
+        /// <summary>
+        /// Copies sourceRect into a managed array, matching WPF: offset is an element index into
+        /// pixels, and stride is the destination pitch in bytes.
+        /// </summary>
+        public void CopyPixels(Int32Rect sourceRect, Array pixels, int stride, int offset) {
+            ArgumentNullException.ThrowIfNull(pixels);
+            int elementSize = Runtime.InteropServices.Marshal.SizeOf(pixels.GetType().GetElementType());
+            int byteOffset = checked(offset * elementSize);
+            int bufferSize = Buffer.ByteLength(pixels) - byteOffset;
+            if (offset < 0 || bufferSize < 0) {
+                throw new ArgumentOutOfRangeException(nameof(offset));
+            }
+            Runtime.InteropServices.GCHandle handle = Runtime.InteropServices.GCHandle.Alloc(pixels, Runtime.InteropServices.GCHandleType.Pinned);
+            try {
+                CopyPixels(sourceRect, handle.AddrOfPinnedObject() + byteOffset, bufferSize, stride);
+            } finally {
+                handle.Free();
             }
         }
 
