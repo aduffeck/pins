@@ -12,7 +12,6 @@
 
 #endregion "copyright"
 
-using NINA.Core.Locale;
 using NINA.Equipment.Interfaces.Mediator;
 using NINA.Profile;
 using NINA.WPF.Base.Interfaces.Mediator;
@@ -31,7 +30,7 @@ namespace NINA.WPF.Base.ViewModel.Equipment.Camera {
                              IApplicationStatusMediator applicationStatusMediator,
                              GuideCameraChooserVM guideCameraChooserVM)
             : base(profileService, guideCameraMediator, null, applicationStatusMediator, guideCameraChooserVM) {
-            Title = Loc.Instance["LblGuideCamera"];
+            Title = "Guide camera";
         }
     }
 }

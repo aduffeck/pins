@@ -30,6 +30,7 @@ using NINA.Equipment.Interfaces;
 using NINA.Equipment.Interfaces.Mediator;
 using NINA.Equipment.Interfaces.ViewModel;
 using NINA.Equipment.Model;
+using NINA.Equipment.Utility;
 using NINA.Image.Interfaces;
 using NINA.Profile.Interfaces;
 using NINA.WPF.Base.Interfaces.Mediator;
@@ -348,6 +349,13 @@ namespace NINA.WPF.Base.ViewModel.Equipment.Camera {
                     }
                 );
 
+                // pins: the imaging and guide camera slots must not open the same camera.
+                if (!CameraClaims.TryClaim(this, Title, (ICamera)DeviceChooserVM.SelectedDevice, out var refusal)) {
+                    Notification.ShowError(refusal);
+                    Logger.Warning(refusal);
+                    return false;
+                }
+
                 var cam = new PersistSettingsCameraDecorator(this.profileService, (ICamera)DeviceChooserVM.SelectedDevice);
                 _cancelConnectCameraSource?.Dispose();
                 _cancelConnectCameraSource = new CancellationTokenSource();
@@ -480,6 +488,9 @@ namespace NINA.WPF.Base.ViewModel.Equipment.Camera {
                     return false;
                 }
             } finally {
+                if (!CameraInfo.Connected) {
+                    CameraClaims.Release(this);
+                }
                 ss.Release();
                 applicationStatusMediator.StatusUpdate(
                     new ApplicationStatus() {
@@ -650,6 +661,7 @@ namespace NINA.WPF.Base.ViewModel.Equipment.Camera {
                 TempChangeRunning = false;
                 Cam?.Disconnect();
                 Cam = null;
+                CameraClaims.Release(this);
                 CameraInfo.Reset();
                 BroadcastCameraInfo();
                 await (Disconnected?.InvokeAsync(this, new EventArgs()) ?? Task.CompletedTask);
