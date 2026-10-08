@@ -307,16 +307,33 @@ namespace NINA.Equipment.Equipment.MyGuider.Advanced {
 
     /// <summary>Result of the mount response step: Dec backlash and how the mount answers guide pulses.</summary>
     public class AdvancedCoachResponse {
-        /// <summary>Dec backlash, ms of pulse and arcsec.</summary>
+        /// <summary>
+        /// Dec backlash for guiding and its compensation, ms of pulse and arcsec: what a reversal after small moves loses
+        /// (reversal test), else the large-move value.
+        /// </summary>
         public double? BacklashMs { get; set; }
 
         public double? BacklashArcsec { get; set; }
 
-        /// <summary>Measured, None (no backlash), Unreliable (e.g. Dec drift too strong, star lost) or Skipped; null while not measured.</summary>
+        /// <summary>Measured, None (no backlash), Unreliable (e.g. Dec drift too strong, star lost) or Skipped; Measuring (no value yet) in live status; null while not measured.</summary>
         public string? BacklashState { get; set; }
 
         /// <summary>Dec position (arcsec) vs cumulative pulse time (ms) of the backlash test, for plotting (X = ms, Y = arcsec).</summary>
         public List<AdvancedCoachPoint> BacklashPoints { get; set; } = new List<AdvancedCoachPoint>();
+
+        /// <summary>Lost motion at a reversal after a long move (the backlash test with large pulses), ms and arcsec; null when not measured.</summary>
+        public double? LargeMoveBacklashMs { get; set; }
+
+        public double? LargeMoveBacklashArcsec { get; set; }
+
+        /// <summary>
+        /// Pulse of the reversal-test step whose reversals moved the star (the basis of <see cref="BacklashMs"/>), ms; null when no
+        /// step did (hard dead band, the large-move value stays) or the test did not run.
+        /// </summary>
+        public int? ReversalPulseMs { get; set; }
+
+        /// <summary>Evaluated reversals of all reversal-test steps; DurationMs is the step's pulse.</summary>
+        public List<AdvancedCoachPulse> ReversalMoves { get; set; } = new List<AdvancedCoachPulse>();
 
         public List<AdvancedCoachPulse> Pulses { get; set; } = new List<AdvancedCoachPulse>();
 
