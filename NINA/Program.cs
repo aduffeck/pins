@@ -19,6 +19,8 @@ using NINA.ViewModel.Sequencer;
 using NINA.ViewModel.Interfaces;
 using NINA.Plugin.Interfaces;
 using NINA.INDI;
+using NINA.Equipment.Interfaces.Mediator;
+using NINA.WPF.Base.ViewModel.Equipment.Camera;
 
 // Disable file watching to prevent inotify limit issues on Linux
 Environment.SetEnvironmentVariable("DOTNET_USE_POLLING_FILE_WATCHER", "true");
@@ -94,6 +96,7 @@ _ = app.Services.GetService<IImageSaveController>();
 _ = app.Services.GetService<IImagingVM>();
 _ = app.Services.GetService<IApplicationVM>();
 _ = app.Services.GetService<IEquipmentVM>();
+_ = app.Services.GetService<GuideCameraVM>();
 _ = app.Services.GetService<ISkyAtlasVM>();
 _ = app.Services.GetService<ISequenceNavigationVM>();
 _ = app.Services.GetService<IFramingAssistantVM>();
@@ -135,6 +138,17 @@ var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
 System.Windows.Application.ApplicationLifetime = lifetime;
 lifetime.ApplicationStopping.Register(() => {
     Logger.Info("Application shutting down...");
+
+    // The guide camera isn't part of the equipment ApplicationVM.Closing disconnects. Stop the guider before
+    // taking its camera away, and close the camera before Closing shuts down the camera SDKs (Atik).
+    try {
+        Nito.AsyncEx.AsyncContext.Run(async () => {
+            await app.Services.GetRequiredService<IGuiderMediator>().Disconnect();
+            await app.Services.GetRequiredService<IGuideCameraMediator>().Disconnect();
+        });
+    } catch (Exception ex) {
+        Logger.Error("Failed to disconnect the guide camera", ex);
+    }
 
     // Call ApplicationVM.Closing() to properly disconnect equipment and cleanup
     var applicationVM = app.Services.GetService<IApplicationVM>();

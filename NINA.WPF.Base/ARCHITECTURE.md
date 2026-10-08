@@ -58,6 +58,17 @@ This keeps non-UI code dependent on interfaces instead of concrete view-model im
 
 The equipment view models under `ViewModel/Equipment/*` are the reusable UI-facing wrappers around the device abstractions from `NINA.Equipment`.
 
+### Guide Camera Slot (pins)
+
+The guide camera is a second camera slot built from the imaging camera's classes rather than new ones:
+
+- `GuideCameraVM` is `CameraVM` with the guide camera's title. It is created with `GuideCameraProfileService` (see [NINA.Profile](../NINA.Profile/ARCHITECTURE.md#guide-camera-settings-pins)), so connection, settings restore, cooling and the saved device choice all use `Profile.GuideCameraSettings`. It has no filter wheel.
+- `GuideCameraMediator` is a second `CameraMediator` instance behind `IGuideCameraMediator`; a mediator takes one handler.
+- `GuideCameraChooserVM` overrides `CameraChooserVM`'s hooks: INDI drivers load under the `"GuideCamera"` category, DSLRs are not scanned, and Alpaca Direct (one fixed Id and settings entry) is not offered.
+- `GuideCameraEquipmentProviders` rebuilds the PlayerOne and SVBony providers with the guide profile service. Other plugin camera providers were composed with the imaging profile service and are left out, since their cameras would write the imaging camera's settings.
+
+None of these is registered as `ICameraVM`, `ICameraMediator`, `IProfileService` or `IEquipmentProviders<ICamera>`: the DI container returns the last registration, so that would replace the imaging camera everywhere. `CameraChooserVM` scans hold a static lock, so the two lists never open and close cameras at the same time.
+
 `ViewModel/Equipment/Dome/DomeFollower.cs` is a good example of the project's role: it coordinates dome-following behavior using profile settings and equipment mediators, but it still lives in a reusable UI/support layer rather than the app executable.
 
 ## Sky Survey Subsystem

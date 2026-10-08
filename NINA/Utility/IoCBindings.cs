@@ -148,6 +148,14 @@ namespace NINA.Utility {
                 services.AddSingleton<DomeChooserVM>();
                 services.AddSingleton<SafetyMonitorChooserVM>();
 
+                // pins: the guide camera slot. Registered under its own types only: as IProfileService,
+                // ICameraMediator, ICameraVM or IEquipmentProviders<ICamera> it would replace the imaging camera's.
+                services.AddSingleton<GuideCameraProfileService>();
+                services.AddSingleton<GuideCameraEquipmentProviders>();
+                services.AddSingleton<GuideCameraChooserVM>();
+                services.AddSingleton<IGuideCameraMediator, GuideCameraMediator>();
+                services.AddSingleton<GuideCameraVM>();
+
                 // Equipment Viewmodel creation
                 services.AddSingleton<ICameraVM, CameraVM>(f =>
                     new CameraVM(f.GetService<IProfileService>(),

@@ -1705,6 +1705,9 @@ Calculated HFR: {2}
   <data name="LblGnssTooltip" xml:space="preserve">
     <value>Import location from a GNSS device</value>
   </data>
+  <data name="LblGuideCamera" xml:space="preserve">
+    <value>Guide camera</value>
+  </data>
   <data name="LblGuider" xml:space="preserve">
     <value>Guider</value>
   </data>
