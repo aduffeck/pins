@@ -550,7 +550,7 @@ namespace NINA.Sequencer.SequenceItem.FlatDevice {
             }
 
             Issues = issues.Concat(takeExposure.Issues).Concat(switchFilter.Issues).Distinct().ToList();
-            Expression.ValidateExpressions(Issues, MinExposureExpression, MaxExposureExpression);
+            ValidateOwnExpressions(Issues);
             RaisePropertyChanged(nameof(Issues));
 
             return Issues.Count == 0;

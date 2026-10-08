@@ -73,7 +73,7 @@ namespace NINA.Test.Sequencer.Conditions {
             var sut = new AboveHorizonCondition(profileServiceMock.Object);
             sut.Icon = new System.Windows.Media.GeometryGroup();
             sut.Data.Coordinates = new InputCoordinates(new Coordinates(20, 20, Epoch.J2000, Coordinates.RAType.Degrees));
-            sut.Data.Offset = 10;
+            sut.Offset = 10;
             var item2 = (AboveHorizonCondition)sut.Clone();
 
             item2.Should().NotBeSameAs(sut);
@@ -163,7 +163,7 @@ namespace NINA.Test.Sequencer.Conditions {
             }
 
             var sut = new AboveHorizonCondition(profileServiceMock.Object);
-            sut.Data.Offset = offset;
+            sut.Offset = offset;
             var mockDateProvider = new Mock<ICustomDateTime>();
             var date = new DateTime(2020, 1, 1, 23, 0, 0);
             date = DateTime.SpecifyKind(date, DateTimeKind.Utc);

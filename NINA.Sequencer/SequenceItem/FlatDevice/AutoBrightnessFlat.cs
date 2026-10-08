@@ -509,7 +509,7 @@ namespace NINA.Sequencer.SequenceItem.FlatDevice {
             }
 
             Issues = issues.Concat(takeExposure.Issues).Concat(switchFilter.Issues).Concat(setBrightness.Issues).Distinct().ToList();
-            NINA.Sequencer.Logic.Expression.ValidateExpressions(Issues, MinBrightnessExpression, MaxBrightnessExpression);
+            ValidateOwnExpressions(Issues);
             RaisePropertyChanged(nameof(Issues));
 
             return Issues.Count == 0;
