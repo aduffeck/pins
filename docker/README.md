@@ -410,6 +410,22 @@ container's root to an unprivileged host user, and logind (polkit) then
 refuses the call; a host without systemd-logind cannot be controlled this
 way; delayed shutdowns (`shutdown -h +5`) and cancelling are not supported.
 
+## Sky Simulator sidecar
+
+For testing without hardware, `docker-compose.yml` has an optional `skysim`
+service: [Sky Simulator](https://sky-simulator.sourceforge.io) with a
+simulated mount, camera, guide camera, focuser, filter wheel and rotator that
+render star fields for where the mount points. It only starts with its profile:
+
+```bash
+docker compose --profile skysim up -d
+```
+
+The image contains the matching INDI relay drivers (`indi_skysimulator`,
+`indi_skysimulator_ccd`, `indi_skysimulator_guide`, listed as "Sky Simulator
+..." in Touch-N-Stars); they do nothing unless the sidecar runs. The sidecar
+is amd64 only. See [`skysim/README.md`](skysim/README.md).
+
 ## Extending the image
 
 Use the image as a base and add what you need:

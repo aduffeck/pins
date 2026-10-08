@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sky Simulator devices, relayed from its built-in INDI server by the
+     indi_skysimulator shims. Driver names equal the DRIVER_EXEC Sky Simulator
+     reports, so pins matches them like native drivers. -->
+<driversList>
+  <devGroup group="Telescopes">
+    <device label="Sky Simulator Mount" manufacturer="Sky Simulator">
+      <driver name="Sky Simulator">indi_skysimulator</driver>
+      <version>4.0</version>
+    </device>
+  </devGroup>
+  <devGroup group="CCDs">
+    <device label="Sky Simulator Camera" manufacturer="Sky Simulator">
+      <driver name="Sky Simulator Camera">indi_skysimulator_ccd</driver>
+      <version>4.0</version>
+    </device>
+    <device label="Sky Simulator Guide Camera" manufacturer="Sky Simulator">
+      <driver name="Sky Simulator Guide Camera">indi_skysimulator_guide</driver>
+      <version>4.0</version>
+    </device>
+  </devGroup>
+  <devGroup group="Focusers">
+    <device label="Sky Simulator Focuser" manufacturer="Sky Simulator">
+      <driver name="Sky Simulator">indi_skysimulator</driver>
+      <version>4.0</version>
+    </device>
+  </devGroup>
+  <devGroup group="Filter Wheels">
+    <device label="Sky Simulator Filter Wheel" manufacturer="Sky Simulator">
+      <driver name="Sky Simulator">indi_skysimulator</driver>
+      <version>4.0</version>
+    </device>
+  </devGroup>
+  <devGroup group="Rotators">
+    <device label="Sky Simulator Rotator" manufacturer="Sky Simulator">
+      <driver name="Sky Simulator">indi_skysimulator</driver>
+      <version>4.0</version>
+    </device>
+  </devGroup>
+</driversList>

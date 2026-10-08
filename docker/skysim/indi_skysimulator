@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""INDI driver shim for the INDI server built into Sky Simulator (>= 4.0.0).
+
+Sky Simulator runs its own INDI server (default 127.0.0.1:7625). pins only
+talks to its own indiserver on port 7624 and starts drivers by executable
+name, so this shim is started by indiserver like any local driver and relays
+one group of Sky Simulator devices between the two servers.
+
+The executable name selects the devices, matching the DRIVER_EXEC that Sky
+Simulator reports for them, so pins and the native guider see them exactly
+like devices of a native driver:
+
+  indi_skysimulator        Mount, Focuser, Filter Wheel, Rotator
+  indi_skysimulator_ccd    Camera
+  indi_skysimulator_guide  Guide Camera
+
+Sky Simulator sends every device to every client and ignores the device in
+getProperties, so a plain indiserver chain ("Device@host:port") would deliver
+all six devices over each link, and indiserver would then forward every
+command once per link (a guide pulse three times). The shim keeps only the
+messages of its own devices.
+
+Environment: SKYSIM_HOST (default 127.0.0.1), SKYSIM_INDI_PORT (default 7625).
+"""
+import os
+import re
+import socket
+import sys
+import threading
+import time
+
+ROLES = {
+    "indi_skysimulator": {
+        b"Sky Simulator Mount",
+        b"Sky Simulator Focuser",
+        b"Sky Simulator Filter Wheel",
+        b"Sky Simulator Rotator",
+    },
+    "indi_skysimulator_ccd": {b"Sky Simulator Camera"},
+    "indi_skysimulator_guide": {b"Sky Simulator Guide Camera"},
+}
+
+NAME_RE = re.compile(rb"<\s*([A-Za-z_][\w.-]*)")
+DEVICE_RE = re.compile(rb"""\sdevice\s*=\s*(?:"([^"]*)"|'([^']*)')""")
+
+
+def log(text):
+    sys.stderr.write(f"{os.path.basename(sys.argv[0])}: {text}\n")
+    sys.stderr.flush()
+
+
+def connect(host, port, timeout):
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            return socket.create_connection((host, port), timeout=5)
+        except OSError as exc:
+            if time.monotonic() >= deadline:
+                log(f"cannot reach Sky Simulator INDI server at {host}:{port}: {exc}"
+                    " (is the simulation started and its devices set to Indi?)")
+                sys.exit(1)
+            time.sleep(1)
+
+
+def tag_end(buf, start):
+    """Index of the '>' closing the tag that starts at buf[start], or -1."""
+    quote = None
+    i = start + 1
+    n = len(buf)
+    while i < n:
+        c = buf[i]
+        if quote is not None:
+            if c == quote:
+                quote = None
+        elif c in (0x22, 0x27):  # " or '
+            quote = c
+        elif c == 0x3E:  # >
+            return i
+        i += 1
+    return -1
+
+
+class Splitter:
+    """Splits the INDI XML stream into top-level elements."""
+
+    def __init__(self):
+        self.buf = bytearray()
+        self.search_from = 0
+
+    def feed(self, data):
+        self.buf += data
+        out = []
+        while True:
+            buf = self.buf
+            start = buf.find(b"<")
+            if start < 0:
+                self.buf = bytearray()
+                self.search_from = 0
+                break
+            if start > 0:
+                del buf[:start]
+                self.search_from = max(0, self.search_from - start)
+            if buf.startswith(b"<?") or buf.startswith(b"<!"):
+                end = buf.find(b">")
+                if end < 0:
+                    break
+                del buf[: end + 1]
+                self.search_from = 0
+                continue
+            gt = tag_end(buf, 0)
+            if gt < 0:
+                break
+            opening = bytes(buf[: gt + 1])
+            m = NAME_RE.match(opening)
+            if m is None:
+                del buf[: gt + 1]
+                self.search_from = 0
+                continue
+            if opening.rstrip(b"> \t\r\n").endswith(b"/"):
+                end = gt + 1
+            else:
+                close = b"</" + m.group(1)
+                ci = buf.find(close, max(gt + 1, self.search_from))
+                if ci < 0:
+                    # keep a margin so a closing tag split across reads is found next time
+                    self.search_from = max(gt + 1, len(buf) - len(close) - 2)
+                    break
+                ce = buf.find(b">", ci)
+                if ce < 0:
+                    self.search_from = ci
+                    break
+                end = ce + 1
+            out.append((opening, bytes(buf[:end])))
+            del buf[:end]
+            self.search_from = 0
+        return out
+
+
+def main():
+    role = os.path.basename(sys.argv[0])
+    devices = ROLES.get(role)
+    if devices is None:
+        log(f"unknown role {role}; install as one of {', '.join(sorted(ROLES))}")
+        sys.exit(2)
+    # global messages (no device attribute) are relayed by one shim only
+    relay_global = role == "indi_skysimulator"
+
+    host = os.environ.get("SKYSIM_HOST", "127.0.0.1")
+    port = int(os.environ.get("SKYSIM_INDI_PORT", "7625"))
+    sock = connect(host, port, timeout=float(os.environ.get("SKYSIM_CONNECT_TIMEOUT", "30")))
+    sock.settimeout(None)
+    log(f"relaying {', '.join(d.decode() for d in sorted(devices))} from {host}:{port}")
+
+    if role != "indi_skysimulator":
+        for dev in sorted(devices):
+            sock.sendall(b'<enableBLOB device="' + dev + b'">Also</enableBLOB>\n')
+
+    def upstream():
+        # indiserver -> Sky Simulator: indiserver only routes our own devices here
+        stdin = sys.stdin.buffer
+        try:
+            while True:
+                data = stdin.read1(65536)
+                if not data:
+                    break
+                sock.sendall(data)
+        except OSError:
+            pass
+        os._exit(0)
+
+    threading.Thread(target=upstream, daemon=True).start()
+
+    out = sys.stdout.buffer
+    splitter = Splitter()
+    try:
+        while True:
+            data = sock.recv(1 << 20)
+            if not data:
+                log("Sky Simulator closed the connection")
+                break
+            for opening, msg in splitter.feed(data):
+                m = DEVICE_RE.search(opening)
+                dev = (m.group(1) if m.group(1) is not None else m.group(2)) if m else None
+                if dev in devices or (not dev and relay_global):
+                    out.write(msg)
+                    out.write(b"\n")
+            out.flush()
+    except (OSError, BrokenPipeError):
+        pass
+    os._exit(0)
+
+
+if __name__ == "__main__":
+    main()
