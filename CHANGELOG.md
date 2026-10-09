@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - INDI cameras: a frame is decoded in memory instead of being written to a temporary file, read back and deleted, which saves an SD card write per frame on a Raspberry Pi.
 - Guide camera: the messages logged for every frame (starting the exposure, the INDI exposure and its image) are written at Debug level instead of Info, so a night of guiding no longer fills the log with them. The imaging camera keeps logging them at Info.
 ### Fixed
+- Internal guider with an INDI mount: after every guide pulse the guider waited up to about 125 ms too long before the next pulse or exposure, because it read the mount's pulse-guiding state through a 100 ms cache and checked it every 25 ms. It now reads it directly (it is pins' own record of the pulse, no mount traffic) and checks every 5 ms, so the next frame starts right after the driver reports the end of the pulse. ASCOM and Alpaca mounts are unchanged.
 - Guide camera API: two capture requests arriving together could both find the guide camera free; the second then failed with an error instead of "Guide camera is busy". The capture now takes the camera in one step (`IGuideCameraMediator.TryRegisterCaptureBlock`). While a guider holds the guide camera, `/equipment/guidecamera/abort-exposure`, `/set-binning` and the `/set-readout` routes answer 409 instead of aborting or changing its guide frame.
 
 ## 1.1.62 - 2026-10-08

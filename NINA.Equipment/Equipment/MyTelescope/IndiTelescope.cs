@@ -202,7 +202,9 @@ namespace NINA.Equipment.Equipment.MyTelescope {
             get {
                 try {
                     if (CanPulseGuide) {
-                        return GetProperty(nameof(IINDITelescope.IsPulseGuiding), false);
+                        // Not cached: a guider waits on this for the end of every pulse, and the value is pins' own
+                        // in-memory pulse tracker, so a fresh read costs nothing and a cached one delays the next pulse.
+                        return GetProperty(nameof(IINDITelescope.IsPulseGuiding), false, TimeSpan.Zero);
                     } else {
                         return false;
                     }
