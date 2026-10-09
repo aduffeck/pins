@@ -544,15 +544,15 @@ public class InternalGuiderLifecycleTests
         slot.Setup(m => m.GetInfo()).Returns(() => info);
         slot.Setup(m => m.TryRegisterCaptureBlock(It.IsAny<object>())).Returns(true);
         var darkExposing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = new List<string>();
         // a dark exposure that lasts until it is cancelled
         slot.Setup(m => m.Capture(It.IsAny<CaptureSequence>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ApplicationStatus>>()))
             .Returns<CaptureSequence, CancellationToken, IProgress<ApplicationStatus>>((_, ct, _) =>
             {
+                ct.Register(() => { lock (calls) calls.Add("dark cancelled"); });
                 darkExposing.TrySetResult();
                 return Task.Delay(Timeout.Infinite, ct);
             });
-        var calls = new List<string>();
-        slot.Setup(m => m.AbortExposure()).Callback(() => { lock (calls) calls.Add("abort"); });
         slot.Setup(m => m.ReleaseCaptureBlock(It.IsAny<object>())).Callback(() => { lock (calls) calls.Add("release"); });
         try
         {
@@ -578,7 +578,7 @@ public class InternalGuiderLifecycleTests
             (await build.WaitAsync(TimeSpan.FromSeconds(10))).Should().BeFalse("the disconnect cancelled the build");
             lock (calls)
             {
-                calls.Should().Equal(["abort", "release"], "the dark exposure ends before the guide camera is given back");
+                calls.Should().Equal(["dark cancelled", "release"], "the dark exposure ends before the guide camera is given back");
             }
         }
         finally
