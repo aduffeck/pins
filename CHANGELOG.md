@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.1.63 - 2026-10-09
+### Added
+- Internal guider: the guiding engine of André Duffeck's pins-guider, a C# port of PHD2 (star finding, multi-star tracking, calibration, guide algorithms, backlash compensation, settling, dithering, guide log) with its own extensions (Predictive algorithm, periodic error, Dec guide mode Drift, pulse model, safety monitors, Guiding Coach, incident recorder and a closed-loop simulator), as the new project `NINA.GuideEngine` with its tests in `NINA.GuideEngine.Test`. It is not yet selectable as a guider; the connection to the guide camera, the mount and the guider list follows.
+
 ## 1.1.62 - 2026-10-08
 ### Added
 - Guide camera: a second camera slot next to the imaging camera, for guiders that need one. It offers the same cameras (native SDK, INDI, Alpaca/ASCOM, simulator) except DSLRs, Alpaca Direct and cameras from third-party plugins, and keeps its own settings in the profile (`GuideCameraSettings`: device, gain, offset, binning, INDI driver and so on), so it never changes the imaging camera's. An INDI guide camera can use a different driver or the same one as the imaging camera. The API has it under `/equipment/guidecamera/...` like the imaging camera (connect, info, readout, binning, cooling, dew heater, USB limit, settings), with a `capture` that returns a guide frame without saving it or touching the imaging camera's last capture; `/equipment/info` and the profile include it, and websocket clients get `GUIDECAMERA-CONNECTED`/`-DISCONNECTED`/`-DOWNLOAD-TIMEOUT`. Plugins get it as `IGuideCameraMediator`. The Touch-N-Stars UI doesn't show it yet. A camera connected in one slot can't be connected in the other, also when it's listed under another brand (a ToupTek camera appears as ToupTek, Omegon and RisingCam). Only one QHY camera can be connected at a time, since pins' QHY driver handles one camera.

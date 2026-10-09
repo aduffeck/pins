@@ -50,6 +50,7 @@ When a task touches "UI", confirm whether it means the WPF layer (usually not th
 - [`NINA.Core/ARCHITECTURE.md`](NINA.Core/ARCHITECTURE.md)
 - [`NINA.CustomControlLibrary/ARCHITECTURE.md`](NINA.CustomControlLibrary/ARCHITECTURE.md)
 - [`NINA.Equipment/ARCHITECTURE.md`](NINA.Equipment/ARCHITECTURE.md)
+- [`NINA.GuideEngine/ARCHITECTURE.md`](NINA.GuideEngine/ARCHITECTURE.md)
 - [`NINA.Image/ARCHITECTURE.md`](NINA.Image/ARCHITECTURE.md)
 - [`NINA.INDI/ARCHITECTURE.md`](NINA.INDI/ARCHITECTURE.md)
 - [`NINA.MGEN/ARCHITECTURE.md`](NINA.MGEN/ARCHITECTURE.md)
@@ -98,6 +99,8 @@ When a task touches "UI", confirm whether it means the WPF layer (usually not th
   Device abstractions and concrete ASCOM/Alpaca/native adapters.
 - `NINA.INDI`
   pins-specific INDI integration: indiserver process lifecycle, INDI XML protocol, global property store, and per-device-type adapters consumed by `NINA.Equipment`. (Not present in upstream NINA.)
+- `NINA.GuideEngine`
+  pins internal guider engine: PHD2-port star finding, calibration, guide algorithms, guiding loop, coach and incident recorder, with no NINA dependencies; tested by `NINA.GuideEngine.Test`. (Not present in upstream NINA.)
 - `NINA.Platesolving`
   Plate-solver integrations and orchestration.
 

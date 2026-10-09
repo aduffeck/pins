@@ -4,7 +4,7 @@ This is the ownership and boundary map for `NINA.sln`. Use it to choose the rele
 
 ## Project Index
 
-The solution separates foundation libraries, runtime domains, shared UI, extensibility and the application shell. The links below cover all 17 NINA project architecture documents.
+The solution separates foundation libraries, runtime domains, shared UI, extensibility and the application shell. The links below cover all 18 NINA project architecture documents.
 
 | Layer | Project And Responsibility | Starting Points And Neighboring Checks |
 | --- | --- | --- |
@@ -13,6 +13,7 @@ The solution separates foundation libraries, runtime domains, shared UI, extensi
 | Foundation | [NINA.Astrometry](NINA.Astrometry/ARCHITECTURE.md): coordinates, astronomy math, twilight and catalogs | SOFA/NOVAS, database/catalog callers and `NINA.Test/AstrometryTest` |
 | Runtime domain | [NINA.Image](NINA.Image/ARCHITECTURE.md): image models, formats, analysis, star detection and rendering helpers | Native assets, autofocus, plate solving, image history and sequencing |
 | Runtime domain | [NINA.MGEN](NINA.MGEN/ARCHITECTURE.md): standalone MGEN2/MGEN3 transport and protocol | Runtime DLL layout and the `NINA.Equipment` guider adapter |
+| Runtime domain | [NINA.GuideEngine](NINA.GuideEngine/ARCHITECTURE.md): pins internal guider engine (PHD2 port and extensions), free of NINA dependencies | `NINA.GuideEngine.Test`, PHD2 golden/parity data and the host contracts in `Core/Hardware.cs` |
 | Runtime domain | [NINA.Equipment](NINA.Equipment/ARCHITECTURE.md): device abstractions and ASCOM/Alpaca/native adapters | Vendor SDKs, profile settings and device mediators |
 | Runtime domain | [NINA.Platesolving](NINA.Platesolving/ARCHITECTURE.md): solver integrations and orchestration | `PlateSolverFactory`, capture, centering and rotation |
 | Shared UI | [NINA.CustomControlLibrary](NINA.CustomControlLibrary/ARCHITECTURE.md): reusable WPF controls and themes | Control classes, default theme XAML and `Themes/Generic.xaml` |

@@ -62,6 +62,7 @@ Use the solution-root [`.runsettings`](../../../../.runsettings) for Visual Stud
 | Planetarium integration | `NINA.Test.Planetarium.StellariumTest` | telescope/framing callers if touched |
 | Serial communication protocol/response cache | `NINA.Test.SerialCommunication` | flat-device or equipment tests that use the protocol layer |
 | MGEN command protocol | `NINA.Test.MGEN.Commands` | guider sequence items/triggers and equipment guider adapter checks |
+| Internal guider engine (`NINA.GuideEngine`) | separate project: `dotnet test NINA.GuideEngine.Test --filter "TestCategory!=Slow&TestCategory!=Benchmark&TestCategory!=Performance"` | the `Slow` category (closed-loop simulator nights, several minutes); `Parity` after building `NINA.GuideEngine/tools/phd2-parity` |
 | Plugin versions/message broker | `NINA.Test.Plugin` | profile plugin settings, plugin-loader composition, sequencer serialization/discovery if extension surfaces changed |
 | Sequencer engine/container strategies | `NINA.Test.Sequencer.SequencerTest`, `NINA.Test.Sequencer.Container`, `NINA.Test.Sequencer.Container.ExecutionStrategy` | sequence item/condition/trigger tests and serialization |
 | Sequencer conditions | `NINA.Test.Sequencer.Conditions` | expression contract tests and astrometry/nighttime tests; run compiled-template cases in the WPF group below |

@@ -46,12 +46,18 @@ jobs:
     - name: Run unit tests
       run: dotnet test NINA.Test/NINA.Test.csproj --configuration Debug --no-build -p:PlatformTarget=x64 --logger "trx;LogFileName=test-results.trx" --results-directory ./TestResults
 
+    - name: Build internal guider test project
+      run: dotnet build NINA.GuideEngine.Test/NINA.GuideEngine.Test.csproj --configuration Debug --no-restore
+
+    - name: Run internal guider unit tests
+      run: dotnet test NINA.GuideEngine.Test/NINA.GuideEngine.Test.csproj --configuration Debug --no-build --filter "TestCategory!=Slow&TestCategory!=Benchmark&TestCategory!=Performance" --logger "trx;LogFileName=guider-test-results.trx" --results-directory ./TestResults
+
     - name: Publish NUnit test results
       uses: dorny/test-reporter@v2
       if: ${{ !cancelled() }}
       with:
         name: NUnit Tests
-        path: TestResults/test-results.trx
+        path: TestResults/*.trx
         reporter: dotnet-trx
 
   merge-version-pull-request:
