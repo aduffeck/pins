@@ -164,8 +164,8 @@ docker build --network=host \
 
 | Key | Plugin | Repository |
 | --- | --- | --- |
-| `ninaapi` | ninaAPI (REST/WebSocket API used by Touch-N-Stars) | `nitr57/ninaAPI` |
-| `touch-n-stars` | Touch-N-Stars plugin + web app | `nitr57/N.I.N.A-Plugin-for-Touch-N-Stars` (`develop`) |
+| `ninaapi` | ninaAPI (REST/WebSocket API used by Touch-N-Stars) | `nitr57/ninaAPI` (`unstable`) |
+| `touch-n-stars` | Touch-N-Stars plugin + web app | `nitr57/N.I.N.A-Plugin-for-Touch-N-Stars` (`unstable`) |
 | `joko` | HocusFocus | `nitr57/joko.nina.plugins` |
 | `livestack` | LiveStack | `nitr57/nina.plugin.livestack` |
 | `polaralignment` | Polar Alignment | `nitr57/nina.plugin.polaralignment` |

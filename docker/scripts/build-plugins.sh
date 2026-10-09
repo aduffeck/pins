@@ -25,8 +25,8 @@ mkdir -p "$out"
 # key -> "repo|branch|checkout dir|project (relative to checkout dir)|install folder|flags"
 plugin_spec() {
   case "$1" in
-    ninaapi)        echo "https://github.com/nitr57/ninaAPI||ninaAPI|ninaAPI/ninaAPI.csproj|ninaAPI|" ;;
-    touch-n-stars)  echo "https://github.com/nitr57/N.I.N.A-Plugin-for-Touch-N-Stars|develop|Touch-N-Stars|Touch-N-Stars/Touch-N-Stars.csproj|Touch-N-Stars|frontend" ;;
+    ninaapi)        echo "https://github.com/nitr57/ninaAPI|unstable|ninaAPI|ninaAPI/ninaAPI.csproj|ninaAPI|" ;;
+    touch-n-stars)  echo "https://github.com/nitr57/N.I.N.A-Plugin-for-Touch-N-Stars|unstable|Touch-N-Stars|Touch-N-Stars/Touch-N-Stars.csproj|Touch-N-Stars|frontend" ;;
     joko)           echo "https://github.com/nitr57/joko.nina.plugins||joko.nina.plugins|Joko.NINA.Plugins/Joko.NINA.Plugins.HocusFocus/Joko.NINA.Plugins.HocusFocus.csproj|joko.nina.plugins|" ;;
     livestack)      echo "https://github.com/nitr57/nina.plugin.livestack||LiveStack|nina.plugin.livestack.csproj|LiveStack|" ;;
     polaralignment) echo "https://github.com/nitr57/nina.plugin.polaralignment||PolarAlignment|PolarAlignment/NINA.Plugins.PolarAlignment.csproj|PolarAlignment|" ;;
