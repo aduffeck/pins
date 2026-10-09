@@ -57,6 +57,11 @@ Examples from the code:
   Provides a non-hardware camera implementation backed by files on disk.
 - `Equipment/MyGuider/MGENGuider.cs`
   Adapts the `NINA.MGEN.IMGEN` library into the guider abstraction.
+- `Equipment/MyGuider/Internal/`
+  pins-only: the Internal Guider, which hosts the guiding engine `NINA.GuideEngine` as a NINA guider and takes its
+  frames from the guide camera slot (`IGuideCameraMediator`). One instance, created through DI and listed by the
+  guider chooser; its files keep their author's layout (own `.editorconfig`). See
+  [`NINA.GuideEngine/ARCHITECTURE.md`](../NINA.GuideEngine/ARCHITECTURE.md#host-boundary).
 - `Interfaces/IAdvancedGuider.cs`, `IGuidingCoach.cs`, `IGuideIncidentRecorder.cs` and `Equipment/MyGuider/Advanced/`
   pins-only: optional extensions of `IGuider` for the internal guider, through which UIs read live frames, guide steps,
   calibration, statistics, alerts and settings, and run the Guiding Coach and the incident recorder. UIs find them with

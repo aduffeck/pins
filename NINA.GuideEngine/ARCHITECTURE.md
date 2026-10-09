@@ -8,9 +8,9 @@ PHD2's guide algorithms and its own extensions (Predictive, periodic error, Dec 
 and dithers, watches for faults, records incidents, writes a PHD2-compatible guide log and runs the Guiding Coach.
 
 The engine was written by André Duffeck as the `pins-guider` plugin (`PinsGuider.Engine`, imported from commit
-`0cec403`) and is developed in pins from now on. It has no dependency on any NINA project: the host that connects it to
-the guide camera, the mount and the guider chooser is added on top of it separately. Until then nothing in pins
-references this project.
+`0cec403`) and is developed in pins from now on. It has no dependency on any NINA project. Its host is the guider device
+`InternalGuider` in `NINA.Equipment/Equipment/MyGuider/Internal` (see Host Boundary); how to use the guider is in
+[docs/USAGE.md](docs/USAGE.md).
 
 Build shape from `NINA.GuideEngine.csproj`:
 
@@ -55,7 +55,7 @@ Build shape from `NINA.GuideEngine.csproj`:
   Closed-loop simulator (sky, camera, mount with drift, periodic error, seeing and backlash) on a virtual clock, used by
   the tests and as a selectable guide source.
 - `docs/`
-  [ALGORITHMS.md](docs/ALGORITHMS.md) (the algorithms that are not PHD2 ports and the simulator results behind them),
+  [USAGE.md](docs/USAGE.md) (how to set up and use the guider), [ALGORITHMS.md](docs/ALGORITHMS.md) (the algorithms that are not PHD2 ports and the simulator results behind them),
   [COACH.md](docs/COACH.md), [INCIDENTS.md](docs/INCIDENTS.md), and design notes in `docs/notes/`.
 - `tools/`
   PHD2 parity harness, PHD2 golden-sequence generator and a guide log statistics script, see
@@ -73,6 +73,22 @@ The engine is host-agnostic and deterministic under test. Everything outside it 
 
 The engine reports through `GuiderEvents`, which use PHD2's event names and fields. Persistence (calibrations, periodic
 error, pulse model, darks, incidents, coach reports) goes through stores whose location the host chooses.
+
+The host, `InternalGuider` in `NINA.Equipment`, implements them with pins' equipment:
+
+- `GuideCameraSource`: the guide camera slot (`IGuideCameraMediator`). Frames are captured and downloaded through the
+  slot; while the guider is connected it holds the slot's capture block, so no other capture runs between two guide
+  frames. The slot chooses, connects and configures the camera; the guider connects it if needed but never
+  disconnects or reconnects it, and disconnects itself when the camera goes away.
+- `MountPulseOutput` (pulse guiding through `ITelescopeMediator`, waiting for the pulse to end), `CameraSt4PulseOutput`
+  (an INDI guide camera's ST4 port) and `NinaMountState`.
+- The engine's `Simulator` when the `GuideSource` setting is `Simulator`.
+
+It also implements `IGuider` for the sequencer and ninaAPI, and the `IAdvancedGuider` contract through which the
+Touch-N-Stars plugin shows frames, steps, calibration, statistics and settings and runs the Guiding Coach and the
+incident recorder. Its settings are kept per profile in the plugin settings under the id of the pins-guider plugin
+(`InternalGuiderOptions`); a setting that was never set falls back to the PHD2 setting of the profile. Its files live
+in `~/.local/share/NINA/InternalGuider/`.
 
 ## Engine Design
 

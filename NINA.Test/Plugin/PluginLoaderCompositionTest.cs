@@ -587,7 +587,8 @@ namespace NINA.Test.Plugin {
                 Mock.Of<IMessageBroker>(),
                 symbolBroker,
                 Mock.Of<ITemplateLinkResolver>(),
-                guideCameraMediator ?? Mock.Of<IGuideCameraMediator>());
+                guideCameraMediator ?? Mock.Of<IGuideCameraMediator>(),
+                Mock.Of<IAdvancedGuider>());
         }
 
         private sealed class CollectingLogEventSink : ILogEventSink {

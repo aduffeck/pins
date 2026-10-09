@@ -24,6 +24,7 @@ using NINA.Core.Utility.WindowService;
 using NINA.Equipment.Equipment.MyDome;
 using NINA.Equipment.Equipment.MyGPS;
 using NINA.Equipment.Equipment.MyPlanetarium;
+using NINA.Equipment.Equipment.MyGuider.Internal;
 using NINA.Equipment.Interfaces;
 using NINA.Equipment.Interfaces.Mediator;
 using NINA.Equipment.Interfaces.ViewModel;
@@ -155,6 +156,10 @@ namespace NINA.Utility {
                 services.AddSingleton<GuideCameraChooserVM>();
                 services.AddSingleton<IGuideCameraMediator, GuideCameraMediator>();
                 services.AddSingleton<GuideCameraVM>();
+
+                // pins: the internal guider, one instance for the guider chooser and plugins (it keeps its state across rescans)
+                services.AddSingleton<InternalGuider>();
+                services.AddSingleton<IAdvancedGuider>(f => f.GetService<InternalGuider>());
 
                 // Equipment Viewmodel creation
                 services.AddSingleton<ICameraVM, CameraVM>(f =>

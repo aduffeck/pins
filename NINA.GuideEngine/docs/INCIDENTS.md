@@ -4,7 +4,7 @@ The internal guider keeps the last minutes of guide frames and telemetry in memo
 them as an **incident**: the frames around the moment, what the guider measured and sent, what the mount reported and a
 first guess at the cause. The Touch-N-Stars guider page lists incidents, replays them and downloads them as a zip.
 
-This file is the design and the contract between the engine, the NINA plugin, the Touch-N-Stars API and the frontend.
+This file is the design and the contract between the engine, the guider device (`InternalGuider` in NINA.Equipment), the Touch-N-Stars API and the frontend.
 
 ## 1. Behaviour
 
@@ -37,7 +37,7 @@ manual mark) belong to the next recorded frame.
 ### When it records
 
 While guiding and while calibrating (states Calibrating, Guiding, LostLock, Reacquiring, Paused). Not while only looping.
-On by default; the plugin setting turns it off (then nothing is buffered).
+On by default; the guider setting turns it off (then nothing is buffered).
 
 ### Window
 
@@ -83,7 +83,7 @@ default 1 GB budget holds about 10-25 incidents.
 
 ### Storage
 
-- Folder given by the host; the plugin uses `CoreUtil.APPLICATIONTEMPPATH/NativeGuider/Incidents/` (~/.local/share/NINA/…).
+- Folder given by the host; the host uses `CoreUtil.APPLICATIONTEMPPATH/InternalGuider/Incidents/` (~/.local/share/NINA/…).
 - One folder per incident `<id>/`: `incident.json` (the `Incident` record, enums as strings), `summary.json` (for fast
   listing, with the kept flag), `context.fits`,
   `crops.fits` and `key.fits` (multi-HDU 16-bit FITS; each HDU has FRAME, KIND, STAR, X0, Y0, BINNING, DATE-OBS,
@@ -148,7 +148,7 @@ Parameters carry the numbers the evidence text shows (e.g. `snrDropPercent`, `ju
 ### Download (zip)
 
 `pins-incident-<id>.zip`: `incident.json`, `context.fits`, `crops.fits`, `key.fits` (those that exist),
-`settings.json` (the engine and plugin settings at the time), `guide-log.txt` (the guide-log lines of the window
+`settings.json` (the engine and guider settings at the time), `guide-log.txt` (the guide-log lines of the window
 ±1 min), `pins-log.txt` (the NINA/PINS log lines of the window ±1 min), `README.txt` (what the files are). The site
 latitude/longitude and the home directory are masked in all text files of the zip.
 
@@ -170,7 +170,7 @@ Namespace `NINA.GuideEngine.Incidents`.
   `List()` (summaries newest first), `Get(id)`, `ReadImage(id, IncidentImageKind kind, long frame)`,
   `ReadCrops(id, frame)`, `SetKept`, `Delete`, `DeleteAllNotKept`, `WriteZip(id, Stream, IEnumerable<(string Name,
   string Content)> extras)`, `Usage` (bytes/count per class), `Save(...)`. Thread-safe.
-- FITS writing lives in the engine (`Imaging/FitsWriter.cs`, multi-HDU, keywords); the plugin's dark library uses the
+- FITS writing lives in the engine (`Imaging/FitsWriter.cs`, multi-HDU, keywords); the host's dark library uses the
   engine writer too.
 - `Guider`: `SetIncidentStore(IncidentStore? store, Func<IncidentTags> tags)`, `string? MarkIncident(string? note, out
   string? error)`, `string? RecordingIncidentId`, `IncidentStore? Incidents`. `AlertEvent` gains `string? IncidentId`
@@ -183,7 +183,7 @@ Namespace `NINA.GuideEngine.Incidents`.
   90 s, ramps back), `Bump` (the mount jumps by 15 px in a random direction, once), `MountStopsResponding` (60 s),
   `CameraFailure` (3 failures in a row), `Runaway` (Dec pulses inverted for 120 s). `MountStopsResponding` also kicks
   RA by 7 px and `Runaway` Dec by 3 px at the start (on a good mount neither raised an alert otherwise); Bump moves 15
-  sensor px. The plugin chooses the scenario from `SimulatorScenario.Presets` by name; it applies on the next connect.
+  sensor px. The host chooses the scenario from `SimulatorScenario.Presets` by name; it applies on the next connect.
 
 ## 3. Contract (NINA.Equipment/Interfaces/IAdvancedGuider.cs, pins)
 
@@ -197,7 +197,7 @@ Id, Summary }`. Enum values travel as their names; causes and kinds as in §1 wi
 FramesOmitted `null` | `diskSpace` | `budget`; marker types lower case. Incidents are readable, manageable and
 downloadable while the internal guider is selected but not connected; only Mark needs a guiding or calibrating guider.
 
-Plugin settings (group "Incidents"; the simulator ones only when the guide camera is the simulator):
+Guider settings (group "Incidents"; the simulator ones only when the guide camera is the simulator):
 
 | Name | Type | Default | Meaning |
 |---|---|---|---|

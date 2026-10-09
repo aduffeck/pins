@@ -146,12 +146,12 @@ lower RA aggression), `hint.raSluggish` (index < 0.15 with large RMS → raise a
 `hint.pulseLimited`, `hint.lowSnr`, `hint.decDrift` (one-sided Dec corrections → polar alignment),
 `hint.seeingBound` (RMS close to the seeing floor: settings are fine, seeing limits).
 
-## 5. Engine/plugin/UI split
+## 5. Engine/host/UI split
 * Engine (`NINA.GuideEngine.Coach`): session orchestrator (async, drives the Guider through its public API
   plus internal measurement hooks), step implementations, analysers, findings, report, live hint analyser;
   tests with the closed-loop simulator in virtual time.
-* Plugin: `IAdvancedGuider` Coach members → engine; applies recommendations to the plugin settings; stores
-  reports as JSON (`~/.local/share/NINA/NativeGuider/Coach/`); provides the imaging scale and gain range.
+* Host (`InternalGuider`): `IAdvancedGuider` Coach members → engine; applies recommendations to the guider settings; stores
+  reports as JSON (`~/.local/share/NINA/InternalGuider/Coach/`); provides the imaging scale and gain range.
 * TNS: plugin API `/api/native-guider/coach/*` + WebSocket event types `coach` and `hint`; a *Coach* tab on
   the internal guider page (step selection, live step views, report card, history) and a hint chip in the state
   strip. All finding codes have localized texts: title, explanation (why it matters) and how to fix.
@@ -164,7 +164,7 @@ the result and never modifies the status of a running or the last session; `Skip
 `GetCoachStatus`, `ApplyCoachActions(ids)` (finding ids, `trial:<id>` or ids of active live hints — an applied hint is
 dismissed), `GetCoachHistory(max)` (reports of the active profile; each report keeps its `ProfileName`), `DismissHint(id)`;
 `AdvancedGuiderStatus.Hints` / `CoachRunning`; events `coach` (AdvancedCoachStatus) and `hint` (AdvancedCoachFinding). The
-engine mirrors these DTOs in `NINA.GuideEngine.Coach`; the plugin maps them 1:1.
+engine mirrors these DTOs in `NINA.GuideEngine.Coach`; the host maps them 1:1.
 
 Codes with parameters: status and step status carry `MessageCode` + `MessageParameters` (e.g. `coach.interrupted`
 {reason}); each step carries an English `Detail` (logs) plus `DetailCode` + `DetailParameters` for the UI:
@@ -193,7 +193,7 @@ Session rules:
   count toward `TrialSeconds`. Normal guiding outside a session is unchanged (corrections pause at once).
 * Measurement frames (CameraCheck, Drift, MountResponse) are excluded from the guiding stats and safety monitors;
   trials use normal guiding (stats and safety active; runaway during a trial fails that trial, not the session).
-* Setting names in `Changes` are the plugin setting names (`AdvancedGuiderSetting.Name`): ExposureSeconds, Gain,
+* Setting names in `Changes` are the guider setting names (`AdvancedGuiderSetting.Name`): ExposureSeconds, Gain,
   Binning, MultiStar, RaAggression, RaHysteresis, RaMinMove, DecAggression, DecMinMove, DecGuideMode, DecAlgorithm,
   BacklashCompensation, BacklashPulseMs, MaxRaDurationMs, MaxDecDurationMs. Values are invariant-culture strings.
 
@@ -247,7 +247,7 @@ Severity in brackets; `→` = setting changes carried in `Changes`. Parameter un
 * **API** (`NINA.GuideEngine.Coach`): `GuidingCoach(Guider, ICoachHost)` with `Start`, `SkipStep`, `Cancel`, `Status`,
   `ApplyActions`, `GetHistory`, `IsRunning`, `Completion`; status updates as `CoachStatusEvent`, hints as `CoachHintEvent`
   through `Guider.EventRaised` (delivered by the guide loop behind the pulses). `Guider.ActiveHints` / `DismissHint`.
-* **Temporary settings** are an overlay on top of the host settings (`CoachSettingsMap` maps the plugin setting names);
+* **Temporary settings** are an overlay on top of the host settings (`CoachSettingsMap` maps the guider setting names);
   host `UpdateSettings` keeps working during a session and every exit path simply drops the overlay.
 * **Measurements** run in the guide loop as frame hooks: guiding output off, frames kept out of the statistics and safety
   monitors, positions from a multi-star combined meter (SNR-weighted mean displacement of the guide stars from their positions
