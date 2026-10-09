@@ -32,5 +32,8 @@ namespace NINA.WPF.Base.ViewModel.Equipment.Camera {
             : base(profileService, guideCameraMediator, null, applicationStatusMediator, guideCameraChooserVM) {
             Title = "Guide camera";
         }
+
+        // a guide camera takes a frame every few seconds all night
+        protected override bool LogFramesAtDebug => true;
     }
 }

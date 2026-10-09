@@ -50,7 +50,7 @@ namespace NINA.Equipment.Utility {
 
             // Query devices for this driver
             foreach (var device in await INDIClient.Instance.GetDevices(DeviceInterface.CCD_INTERFACE, driver, category)) {
-                l.Add(new IndiCamera(device, profileService, exposureDataFactory, imageDataFactory));
+                l.Add(new IndiCamera(device, profileService, exposureDataFactory, imageDataFactory, logFramesAtDebug: category == "GuideCamera"));
             }
             return l;
         }

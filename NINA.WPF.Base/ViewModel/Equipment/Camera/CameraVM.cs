@@ -46,6 +46,9 @@ namespace NINA.WPF.Base.ViewModel.Equipment.Camera {
 
     public partial class CameraVM : DockableVM, ICameraVM {
 
+        /// <summary>Log the messages that repeat for every exposure at Debug instead of Info (the guide camera).</summary>
+        protected virtual bool LogFramesAtDebug => false;
+
         public CameraVM(IProfileService profileService,
                         ICameraMediator cameraMediator,
                         IFilterWheelMediator filterWheelMediator,
@@ -762,7 +765,12 @@ namespace NINA.WPF.Base.ViewModel.Equipment.Camera {
                 }
                 this.exposureTime = sequence.ExposureTime;
                 double exposureTime = sequence.ExposureTime;
-                Logger.Info($"Starting Exposure - Exposure Time: {exposureTime}s; Filter: {sequence.FilterType?.Name}; Gain: {CameraInfo.Gain}; Offset {CameraInfo.Offset}; Binning: {CameraInfo.BinX}x{CameraInfo.BinY};");
+                var startingExposure = $"Starting Exposure - Exposure Time: {exposureTime}s; Filter: {sequence.FilterType?.Name}; Gain: {CameraInfo.Gain}; Offset {CameraInfo.Offset}; Binning: {CameraInfo.BinX}x{CameraInfo.BinY};";
+                if (LogFramesAtDebug) {
+                    Logger.Debug(startingExposure);
+                } else {
+                    Logger.Info(startingExposure);
+                }
 
                 Cam.StartExposure(sequence);
 

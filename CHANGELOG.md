@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Internal guider: the guiding engine of André Duffeck's pins-guider, a C# port of PHD2 (star finding, multi-star tracking, calibration, guide algorithms, backlash compensation, settling, dithering, guide log) with its own extensions (Predictive algorithm, periodic error, Dec guide mode Drift, pulse model, safety monitors, Guiding Coach, incident recorder and a closed-loop simulator), as the new project `NINA.GuideEngine` with its tests in `NINA.GuideEngine.Test`. It is not yet selectable as a guider; the connection to the guide camera, the mount and the guider list follows.
 - Internal guider: `IAdvancedGuider`, `IGuidingCoach` and `IGuideIncidentRecorder` in `NINA.Equipment`, the interfaces through which the Touch-N-Stars plugin will show the internal guider's live frames, guide steps, calibration, statistics, alerts and settings, and run its Guiding Coach and incident recorder. From André Duffeck's pins-guider branch, without its contract version and its guide camera list, which the guide camera slot replaces.
+### Changed
+- INDI cameras: a frame is decoded in memory instead of being written to a temporary file, read back and deleted, which saves an SD card write per frame on a Raspberry Pi.
+- Guide camera: the messages logged for every frame (starting the exposure, the INDI exposure and its image) are written at Debug level instead of Info, so a night of guiding no longer fills the log with them. The imaging camera keeps logging them at Info.
 
 ## 1.1.62 - 2026-10-08
 ### Added
