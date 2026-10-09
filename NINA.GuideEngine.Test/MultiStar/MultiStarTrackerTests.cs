@@ -421,6 +421,79 @@ public class MultiStarTrackerTests
     }
 
     [Test]
+    public void SelectStar_MakesTheChosenStarPrimaryAndFindsSecondariesAroundIt()
+    {
+        var scene = new Scene();
+        var frame = scene.Render(0, 0, 1);
+        var t = NewTracker();
+        t.AutoSelect(frame).Primary.Position.X.Should().BeApproximately(200.3, 0.2, "AutoFind picks the brightest star");
+
+        // a tap a few px off the star
+        var r = t.SelectStar(frame, new GuidePoint(84, 74));
+
+        r.Success.Should().BeTrue();
+        r.Primary.Position.X.Should().BeApproximately(80.2, 0.2);
+        r.Primary.Position.Y.Should().BeApproximately(70.9, 0.2);
+        t.PrimaryStar.X.Should().BeApproximately(80.2, 0.2);
+        r.SecondaryStars.Should().Be(t.GuideStars.Count - 1).And.BeGreaterThan(2);
+        t.GuideStars[0].X.Should().BeApproximately(80.2, 0.2);
+        foreach (var gs in t.GuideStars.Skip(1))
+        {
+            (gs.Position - t.PrimaryStar.Position).Distance().Should().BeGreaterThan(15, "the primary is not also a secondary");
+            var expected = t.PrimaryStar.Position + gs.OffsetFromPrimary;
+            expected.X.Should().BeApproximately(gs.X, 0.01);
+            expected.Y.Should().BeApproximately(gs.Y, 0.01);
+        }
+
+        t.GuideStars.Skip(1).Should().Contain(gs => Math.Abs(gs.X - 200.3) < 0.5, "the previous primary is now a secondary");
+        t.ProcessFrame(scene.Render(0.3, 0.2, 2), r.Primary.Position, TrackerState.Looping, T(1)).Primary.Position.X
+            .Should().BeApproximately(80.5, 0.3);
+    }
+
+    [Test]
+    public void SelectStar_SingleStarMode_HasNoSecondaries()
+    {
+        var scene = new Scene();
+        var t = NewTracker(new MultiStarOptions { MultiStarEnabled = false });
+        var r = t.SelectStar(scene.Render(0, 0, 1), new GuidePoint(81, 71));
+        r.Success.Should().BeTrue();
+        r.SecondaryStars.Should().Be(0);
+        t.GuideStars.Should().HaveCount(1);
+    }
+
+    [Test]
+    public void SelectStar_WithoutAStarThere_KeepsTheSelection()
+    {
+        var scene = new Scene();
+        var frame = scene.Render(0, 0, 1);
+        var t = NewTracker();
+        t.AutoSelect(frame);
+        int stars = t.GuideStars.Count;
+
+        t.SelectStar(frame, new GuidePoint(370, 170)).Error.Should().Be(StarSelectionError.NoStar);
+        t.SelectStar(frame, new GuidePoint(-5, 170)).Error.Should().Be(StarSelectionError.NoStar);
+
+        t.PrimaryStar.X.Should().BeApproximately(200.3, 0.2);
+        t.GuideStars.Should().HaveCount(stars);
+    }
+
+    [Test]
+    public void SelectStar_TooCloseToTheEdge_IsRejected()
+    {
+        var scene = new Scene();
+        scene.Stars.Add((9.5, 150.5, 40000));
+        var frame = scene.Render(0, 0, 1);
+        var t = NewTracker();
+        t.AutoSelect(frame);
+
+        var r = t.SelectStar(frame, new GuidePoint(10, 150));
+
+        r.Error.Should().Be(StarSelectionError.NearEdge);
+        r.Primary.Position.X.Should().BeApproximately(9.5, 0.5, "the star was found, only too close to the edge");
+        t.PrimaryStar.X.Should().BeApproximately(200.3, 0.2);
+    }
+
+    [Test]
     public void RefreshSecondaryStars_ReplacesSecondariesThatBelongToAnotherField()
     {
         // the primary changed to a star with other neighbours: same primary position, the rest of the field differs

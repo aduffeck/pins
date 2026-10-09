@@ -168,6 +168,34 @@ public sealed class MultiStarTracker
     }
 
     /// <summary>
+    /// Manually selects the star nearest <paramref name="position"/> (within the search region) as the primary.
+    /// Deviation from PHD2: a click selection there guides on the clicked star alone (<see cref="SelectStarAt"/>);
+    /// here, in multi-star mode, the secondary stars are found with AutoFind around it, as after an auto-selection.
+    /// The tracker state is left unchanged on failure.
+    /// </summary>
+    public StarSelectionResult SelectStar(GuideFrame frame, GuidePoint position)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        if (!position.IsValid || position.X < 0 || position.X >= frame.Width || position.Y < 0 || position.Y >= frame.Height)
+            return StarSelectionResult.Failed(StarSelectionError.NoStar);
+        var candidate = new Star();
+        if (!candidate.Find(frame, SearchRegion, (int)position.X, (int)position.Y, StarFindMode.Centroid, FinderOptions.MinHfd,
+                FinderOptions.MaxHfd, FinderOptions.SaturationAdu))
+            return StarSelectionResult.Failed(StarSelectionError.NoStar, StarSnapshot.Of(candidate));
+        frameWidth = frame.Width;
+        frameHeight = frame.Height;
+        if (!IsValidLockPosition(candidate.Position))
+            return StarSelectionResult.Failed(StarSelectionError.NearEdge, StarSnapshot.Of(candidate));
+
+        var list = new List<GuideStar> { new(candidate) };
+        list.AddRange(FindSecondaries(frame, candidate.Position));
+        var r = InitializeCore(frame, list, candidate.Position, null);
+        return r.Success
+            ? new StarSelectionResult(StarSelectionError.None, r.Primary, list.Count - 1)
+            : StarSelectionResult.Failed(StarSelectionError.NoStar, r.Primary);
+    }
+
+    /// <summary>
     /// Extension (not in PHD2): replaces the secondary stars with stars found by AutoFind around the current primary,
     /// for when the old ones keep being lost (the primary switched to another star, or the field moved). A lost
     /// secondary is otherwise only searched at its original offset from the primary and never recovers. The list is

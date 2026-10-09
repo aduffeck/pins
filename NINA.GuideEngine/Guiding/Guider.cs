@@ -91,6 +91,9 @@ public sealed partial class Guider : IAsyncDisposable
     private bool autoSelectRequested;
     private int autoSelectAttemptsLeft;
 
+    // manual star selection waiting for the next looping frame
+    private (GuidePoint Position, TaskCompletionSource<StarSelectionResult> Completion)? manualSelect;
+
     // guiding frames in a row with the primary found and every measured secondary star lost
     private int secondariesLostFrames;
     private PendingOperation? pending;
@@ -277,6 +280,42 @@ public sealed partial class Guider : IAsyncDisposable
     }
 
     /// <summary>
+    /// Select the star nearest <paramref name="position"/> (frame px, within the search region) as the guide star on the
+    /// next frame, like clicking a star in PHD2; in multi-star mode its secondary stars are found around it. Only while
+    /// looping exposures without guiding: completes with <see cref="StarSelectionError.Busy"/> while guiding, calibrating,
+    /// starting to guide or running the Coach, and with <see cref="StarSelectionError.NotLooping"/> when not looping.
+    /// </summary>
+    public Task<StarSelectionResult> SelectStarAsync(GuidePoint position, CancellationToken ct = default)
+    {
+        var tcs = new TaskCompletionSource<StarSelectionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Post(() =>
+        {
+            if (state.IsGuidingActive() || state == GuiderState.Calibrating || coachHook is not null || startGuidingRequested)
+            {
+                tcs.TrySetResult(StarSelectionResult.Failed(StarSelectionError.Busy));
+                return;
+            }
+
+            if (state is not (GuiderState.Looping or GuiderState.Selected))
+            {
+                tcs.TrySetResult(StarSelectionResult.Failed(StarSelectionError.NotLooping));
+                return;
+            }
+
+            CancelManualSelect();
+            manualSelect = (position, tcs);
+        });
+
+        // no loop to run the command: answer now
+        if (!IsLoopRunning)
+        {
+            DrainCommands();
+        }
+
+        return ct.CanBeCanceled ? tcs.Task.WaitAsync(ct) : tcs.Task;
+    }
+
+    /// <summary>
     /// Start guiding (PHD2 guide): selects a star if needed, calibrates if needed (or forced), starts guiding
     /// and completes once settled.
     /// </summary>
@@ -409,6 +448,13 @@ public sealed partial class Guider : IAsyncDisposable
         startGuidingRequested = false;
         autoSelectRequested = false;
         forceCalibration = false;
+        CancelManualSelect();
+    }
+
+    private void CancelManualSelect()
+    {
+        manualSelect?.Completion.TrySetResult(StarSelectionResult.Failed(StarSelectionError.Cancelled));
+        manualSelect = null;
     }
 
     /// <summary>Stops the current guiding/calibration run (without touching the pending operation) so it can be restarted.</summary>
@@ -867,6 +913,13 @@ public sealed partial class Guider : IAsyncDisposable
         pulses = [];
         Emit(new LoopingExposuresEvent(now, frame.FrameNumber));
 
+        if (manualSelect is { } request)
+        {
+            // then tracked on this frame too: the overlay shows the new stars at once, a failed choice keeps the old star
+            manualSelect = null;
+            request.Completion.TrySetResult(SelectStarCore(frame, request.Position, now));
+        }
+
         if (autoSelectRequested)
         {
             int edge = calibration is null ? CalibrationDistancePx(snapshot) : 0;
@@ -924,6 +977,25 @@ public sealed partial class Guider : IAsyncDisposable
         }
 
         return r;
+    }
+
+    private StarSelectionResult SelectStarCore(GuideFrame frame, GuidePoint position, DateTimeOffset now)
+    {
+        var sel = tracker.SelectStar(frame, position);
+        if (!sel.Success)
+        {
+            return sel;
+        }
+
+        // the explicit choice replaces a pending automatic selection
+        autoSelectRequested = false;
+        secondariesLostFrames = 0;
+        lastGoodMass = sel.Primary.Mass;
+        lastGoodSnr = sel.Primary.Snr;
+        Emit(new StarSelectedEvent(now, sel.Primary.Position.X, sel.Primary.Position.Y));
+        SetLockPositionCore(sel.Primary.Position);
+        SetState(GuiderState.Selected);
+        return sel;
     }
 
     /// <summary>

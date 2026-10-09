@@ -5,6 +5,7 @@ using NUnit.Framework;
 using NINA.GuideEngine.Algorithms;
 using NINA.GuideEngine.Core;
 using NINA.GuideEngine.Guiding;
+using NINA.GuideEngine.MultiStar;
 using NINA.GuideEngine.Simulation;
 using NINA.GuideEngine.Test.TestSupport;
 
@@ -532,6 +533,65 @@ public class ClosedLoopTests
         recenter.Should().NotBeEmpty();
         recenter.Should().OnlyContain(s => s.RaDuration <= 300 && s.DecDuration <= 300);
         recenter.Should().Contain(s => s.RaDuration == 300 || s.DecDuration == 300, "the 12 px dither needs more than one max pulse");
+    }
+
+    [Test]
+    public async Task Guides_on_a_star_selected_by_hand()
+    {
+        var h = new Harness(SimulatorScenario.GoodMount);
+        StarTruth? chosen = null;
+        Task<StarSelectionResult>? select = null;
+        Task<StarSelectionResult>? whileGuiding = null;
+        Task<SettleResult>? guide = null;
+        IReadOnlyList<StarInfo>? selectionFrameStars = null;
+        h.OnEvent = e =>
+        {
+            if (e is LoopingExposuresEvent && select is null && h.Sim.Camera.LastFrameTruth is { } truth)
+            {
+                // not the star auto-selection would take: the third brightest, away from the edges; tapped 3 px off
+                chosen = truth.Stars.Where(s => s.InFrame && s.X is > 200 and < 1736 && s.Y is > 200 and < 1016)
+                    .OrderBy(s => s.Magnitude).Skip(2).First();
+                select = h.Guider.SelectStarAsync(new GuidePoint(chosen.X + 3, chosen.Y - 2));
+            }
+            else if (e is StarSelectedEvent && guide is null)
+            {
+                guide = h.Guider.StartGuidingAsync(Settle);
+            }
+            else if (e is FrameReadyEvent f && guide is not null && selectionFrameStars is null)
+            {
+                selectionFrameStars = f.Stars;
+            }
+            else if (e is GuideStepEvent && whileGuiding is null)
+            {
+                whileGuiding = h.Guider.SelectStarAsync(new GuidePoint(chosen!.X, chosen.Y));
+            }
+        };
+
+        await h.RunFor(TimeSpan.FromMinutes(8));
+
+        var selected = await select!;
+        selected.Success.Should().BeTrue();
+        selected.Primary.Position.X.Should().BeApproximately(chosen!.X, 1.5);
+        selected.Primary.Position.Y.Should().BeApproximately(chosen.Y, 1.5);
+        selected.SecondaryStars.Should().BeGreaterThan(2);
+        selectionFrameStars.Should().HaveCount(selected.SecondaryStars + 1, "the frame the star was chosen on shows the new stars");
+        selectionFrameStars!.Single(s => s.IsPrimary).X.Should().BeApproximately(selected.Primary.Position.X, 0.01);
+        (await guide!).Success.Should().BeTrue();
+        (await whileGuiding!).Error.Should().Be(StarSelectionError.Busy);
+        h.Events.OfType<StarSelectedEvent>().Should().ContainSingle("no automatic selection replaced it");
+        var firstLock = h.Events.OfType<LockPositionSetEvent>().First();
+        firstLock.X.Should().BeApproximately(chosen.X, 1.5);
+        firstLock.Y.Should().BeApproximately(chosen.Y, 1.5);
+        h.Events.OfType<GuideStepEvent>().Where(s => s.Time > 120).Should().Contain(s => s.StarsUsed > 1, "multi-star guiding on the chosen star");
+        h.Events.OfType<AlertEvent>().Should().NotContain(a => a.Code == GuideErrorCode.SecondaryStarsRefreshed);
+        h.Alerts(GuideErrorSeverity.Critical).Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task Selecting_a_star_needs_looping_exposures()
+    {
+        var h = new Harness(SimulatorScenario.GoodMount);
+        (await h.Guider.SelectStarAsync(new GuidePoint(500, 500))).Error.Should().Be(StarSelectionError.NotLooping);
     }
 
     [Test]
