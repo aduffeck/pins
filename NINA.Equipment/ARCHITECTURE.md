@@ -57,6 +57,12 @@ Examples from the code:
   Provides a non-hardware camera implementation backed by files on disk.
 - `Equipment/MyGuider/MGENGuider.cs`
   Adapts the `NINA.MGEN.IMGEN` library into the guider abstraction.
+- `Interfaces/IAdvancedGuider.cs`, `IGuidingCoach.cs`, `IGuideIncidentRecorder.cs` and `Equipment/MyGuider/Advanced/`
+  pins-only: optional extensions of `IGuider` for the internal guider, through which UIs read live frames, guide steps,
+  calibration, statistics, alerts and settings, and run the Guiding Coach and the incident recorder. UIs find them with
+  `guiderMediator.GetDevice() as IAdvancedGuider`. The DTOs in `MyGuider/Advanced` are plain JSON-serializable classes
+  and the vocabularies (states, event types, codes) are string constants. The contract has no version: its implementer
+  and its consumers (the Touch-N-Stars plugin) are built together with pins.
 - `Equipment/MyPlanetarium/PlanetariumFactory.cs` and `Equipment/MyGPS/GnssFactory.cs`
   Select concrete external integrations from profile settings.
 
