@@ -421,6 +421,68 @@ public class MultiStarTrackerTests
     }
 
     [Test]
+    public void RefreshSecondaryStars_ReplacesSecondariesThatBelongToAnotherField()
+    {
+        // the primary changed to a star with other neighbours: same primary position, the rest of the field differs
+        var scene = new Scene();
+        var other = new Scene();
+        other.Stars.RemoveRange(1, other.Stars.Count - 1);
+        other.Stars.AddRange([(50.5, 40.2, 50000), (350.4, 200.7, 45000), (120.3, 180.9, 40000), (280.6, 270.1, 35000), (60.2, 270.4, 30000)]);
+        var t = NewTracker();
+        var sel = t.AutoSelect(scene.Render(0, 0, 1));
+        int before = t.GuideStars.Count - 1;
+        before.Should().Be(6);
+        for (int i = 1; i <= 8; i++)
+        {
+            var res = t.ProcessFrame(other.Render(0, 0, 10 + i), sel.LockPosition, TrackerState.Guiding, T(i));
+            res.Outcome.Should().Be(TrackerOutcome.Found);
+        }
+
+        var frame = other.Render(0, 0, 30);
+        t.ProcessFrame(frame, sel.LockPosition, TrackerState.Guiding, T(9));
+        var r = t.RefreshSecondaryStars(frame, force: false);
+
+        r.Should().Be(new SecondaryRefreshResult(6, 5, true));
+        t.GuideStars.Should().HaveCount(6);
+        t.GuideStars[0].X.Should().BeApproximately(200.3, 0.3);
+        foreach (var (x, y, _) in other.Stars.Skip(1))
+            t.GuideStars.Skip(1).Should().ContainSingle(gs => Math.Abs(gs.X - x) < 0.5 && Math.Abs(gs.Y - y) < 0.5);
+        t.IsStabilizing.Should().BeTrue("the new reference points are re-snapped once the primary is back at the lock position");
+    }
+
+    [Test]
+    public void RefreshSecondaryStars_KeepsSecondariesThatAreStillThere()
+    {
+        var scene = new Scene();
+        var frame = scene.Render(0, 0, 1);
+        var t = NewTracker();
+        t.AutoSelect(frame);
+        var stars = t.GuideStars.ToList();
+        t.ProcessFrame(scene.Render(0.2, 0.1, 2), t.PrimaryStar.Position, TrackerState.Looping, T(1));
+
+        t.RefreshSecondaryStars(scene.Render(0.2, 0.1, 2), force: false).Replaced.Should().BeFalse();
+
+        t.GuideStars.Should().Equal(stars);
+    }
+
+    [Test]
+    public void RefreshSecondaryStars_KeepsTheListWhenFewStarsAreFound()
+    {
+        // clouds: only the primary and one secondary are visible
+        var scene = new Scene();
+        var t = NewTracker();
+        t.AutoSelect(scene.Render(0, 0, 1));
+        var stars = t.GuideStars.ToList();
+        var cloudy = scene.Render(0, 0, 2, omit: new HashSet<int> { 2, 3, 4, 5, 6 });
+        t.ProcessFrame(cloudy, t.PrimaryStar.Position, TrackerState.Looping, T(1));
+
+        var r = t.RefreshSecondaryStars(cloudy, force: true);
+
+        r.Should().Be(new SecondaryRefreshResult(6, 1, false));
+        t.GuideStars.Should().Equal(stars);
+    }
+
+    [Test]
     public void DistanceAverages_FollowPhd2Smoothing()
     {
         var t = NewTracker();

@@ -534,6 +534,59 @@ public class ClosedLoopTests
         recenter.Should().Contain(s => s.RaDuration == 300 || s.DecDuration == 300, "the 12 px dither needs more than one max pulse");
     }
 
+    [Test]
+    public async Task Finds_the_secondary_stars_again_when_they_stay_lost()
+    {
+        // what a guide star changing to a neighbour does to the secondaries: the guide star stays, the stars around it
+        // change (set A disappears, set B appears) and the secondaries are never found again at their old offsets
+        const double swapSec = 600;
+        var stars = new List<SimStar> { new(0, 0, 9.5) };
+        SimStar[] setA = [new(-300, 200, 10.0), new(250, -150, 10.2), new(400, 250, 10.4), new(-450, -200, 10.6), new(100, 300, 10.8)];
+        SimStar[] setB = [new(-200, -300, 10.0), new(350, 100, 10.2), new(-500, 100, 10.4), new(200, 350, 10.6), new(-150, 380, 10.8)];
+        stars.AddRange(setA);
+        stars.AddRange(setB);
+        var occlusions = Enumerable.Range(1, setA.Length).Select(i => new StarOcclusion(swapSec, 1e6, i))
+            .Concat(Enumerable.Range(1 + setA.Length, setB.Length).Select(i => new StarOcclusion(0, swapSec, i)))
+            .ToList();
+        var scenario = SimulatorScenario.GoodMount with { Sky = SimulatorScenario.GoodMount.Sky with { Stars = stars, Occlusions = occlusions } };
+        var h = new Harness(scenario);
+        Task<SettleResult>? guide = null;
+        h.OnEvent = e =>
+        {
+            // the automatic selection takes the brightest star, the one that stays
+            if (e is LoopingExposuresEvent && guide is null)
+            {
+                guide = h.Guider.StartGuidingAsync(Settle);
+            }
+        };
+
+        await h.RunFor(TimeSpan.FromMinutes(20));
+
+        (await guide!).Success.Should().BeTrue();
+        var refreshed = h.Events.OfType<AlertEvent>().Where(a => a.Code == GuideErrorCode.SecondaryStarsRefreshed).ToList();
+        refreshed.Should().ContainSingle();
+        double refreshSec = h.Seconds(refreshed[0].Timestamp);
+        refreshSec.Should().BeInRange(swapSec + 50, swapSec + 120, "after 30 frames of 2 s with every secondary lost");
+        refreshed[0].Detail.Should().Be("5 secondary stars (before: 5)");
+
+        var steps = h.Events.OfType<GuideStepEvent>().Where(s => !s.IsSettling).ToList();
+        double MultiStarShare(double from, double to)
+        {
+            var window = steps.Where(s => h.Seconds(s.Timestamp) > from && h.Seconds(s.Timestamp) < to).ToList();
+            window.Should().NotBeEmpty();
+            return window.Count(s => s.StarsUsed > 1) / (double)window.Count;
+        }
+
+        double before = MultiStarShare(swapSec - 200, swapSec);
+        double lost = MultiStarShare(swapSec + 10, swapSec + 50);
+        double after = MultiStarShare(refreshSec + 60, double.MaxValue);
+        TestContext.Out.WriteLine($"multi-star frames: {before:P0} before the swap, {lost:P0} with set A lost, {after:P0} after the refresh");
+        before.Should().BeGreaterThan(0.9);
+        lost.Should().Be(0, "every secondary is lost");
+        after.Should().BeGreaterThan(0.9, "guiding on set B");
+        h.Alerts(GuideErrorSeverity.Critical).Should().BeEmpty();
+    }
+
     /// <summary>
     /// The pulse model (docs/notes/DEC-PULSE-MODEL.md) with both axes on Predictive and a dither every 2 minutes, on a mount
     /// with a little Dec backlash and drift. With a calibration that is off like the EQMod rig's (RA pulses act 1.14×, Dec

@@ -35,6 +35,9 @@ public sealed partial class Guider : IAsyncDisposable
 {
     private const string MountName = "Mount";
 
+    // guiding frames in a row with every secondary star lost before they are found again (about a minute at 2 s)
+    private const int SecondaryRefreshFrames = 30;
+
     // a Dec runaway this soon after a meridian flip inverts Dec once instead of stopping (ARCHITECTURE.md, "Calibration")
     private static readonly TimeSpan FlipRunawayWindow = TimeSpan.FromMinutes(15);
 
@@ -87,6 +90,9 @@ public sealed partial class Guider : IAsyncDisposable
 
     private bool autoSelectRequested;
     private int autoSelectAttemptsLeft;
+
+    // guiding frames in a row with the primary found and every measured secondary star lost
+    private int secondariesLostFrames;
     private PendingOperation? pending;
     private bool startGuidingRequested;
     private bool forceCalibration;
@@ -911,10 +917,80 @@ public sealed partial class Guider : IAsyncDisposable
         if (startGuidingRequested && r.StarFound)
         {
             startGuidingRequested = false;
+
+            // a star kept from before (e.g. after a failure or a slew) may not be the one its secondaries belong to
+            RefreshSecondaries(frame, force: false);
             BeginGuiding(r.Primary.Position, snapshot, now, out pulses);
         }
 
         return r;
+    }
+
+    /// <summary>
+    /// Extension: finds the secondary stars again around the primary (see <see cref="MultiStarTracker.RefreshSecondaryStars"/>);
+    /// alerts when it replaced secondaries that were lost.
+    /// </summary>
+    private void RefreshSecondaries(GuideFrame frame, bool force)
+    {
+        secondariesLostFrames = 0;
+        var r = tracker.RefreshSecondaryStars(frame, force);
+        if (r.Replaced && r.Before > 0)
+        {
+            Alert(GuideErrorCode.SecondaryStarsRefreshed, $"{r.Found} secondary stars (before: {r.Before})");
+        }
+    }
+
+    /// <summary>
+    /// Extension: a secondary star that is lost is only searched at its original offset from the primary, so when the
+    /// primary changes to a neighbouring star (clouds, a reacquisition) all secondaries stay lost and multi-star guiding
+    /// silently degrades to the primary alone. Finds them again after <see cref="SecondaryRefreshFrames"/> guiding frames
+    /// in a row with the primary found and every measured secondary lost.
+    /// </summary>
+    private void CheckSecondaryStars(GuideFrame frame, MultiStarFrameResult r)
+    {
+        if (r.Outcome != TrackerOutcome.Found)
+        {
+            // a lost or estimated primary says nothing about the secondaries
+            return;
+        }
+
+        int measured = 0;
+        int lost = 0;
+        foreach (var s in r.Stars)
+        {
+            if (s.Index == 0)
+            {
+                continue;
+            }
+
+            switch (s.Status)
+            {
+                case TrackedStarStatus.Lost:
+                    lost++;
+                    measured++;
+                    break;
+                case TrackedStarStatus.Used or TrackedStarStatus.Miss or TrackedStarStatus.ReferenceReset or TrackedStarStatus.Resnapped:
+                    measured++;
+                    break;
+            }
+        }
+
+        if (measured == 0)
+        {
+            // not measured this frame (settling, stabilising, paused, single star)
+            return;
+        }
+
+        if (lost < measured)
+        {
+            secondariesLostFrames = 0;
+            return;
+        }
+
+        if (++secondariesLostFrames >= SecondaryRefreshFrames)
+        {
+            RefreshSecondaries(frame, force: true);
+        }
     }
 
     private void BeginGuiding(GuidePoint starPosition, MountSnapshot snapshot, DateTimeOffset now, out IReadOnlyList<PulseCommand> pulses)
@@ -1141,6 +1217,7 @@ public sealed partial class Guider : IAsyncDisposable
 
     private void ResetGuidingRuntime()
     {
+        secondariesLostFrames = 0;
         runaway.Reset();
         response.Reset();
         reacquire.Reset();
@@ -1170,6 +1247,7 @@ public sealed partial class Guider : IAsyncDisposable
         // (PHD2's refinement gates are made for guiding near the lock position, not for unguided drift and test pulses)
         var ts = new TrackerState(IsGuiding: true, IsSettling: settle.IsActive, IsPaused: paused, RaOnly: raOnly, GuidingEnabled: !paused && !measuring);
         var r = tracker.ProcessFrame(frame, lockPosition, ts, now);
+        CheckSecondaryStars(frame, r);
         if (transform is not { } t)
         {
             Fail(GuideErrorCode.NotCalibrated, "no calibration while guiding");

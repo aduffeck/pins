@@ -191,6 +191,12 @@ public sealed record AutoSelectResult(bool Success, StarSnapshot Primary, IReadO
     public GuidePoint LockPosition => Success ? Primary.Position : GuidePoint.Invalid;
 }
 
+/// <summary>Result of <see cref="MultiStarTracker.RefreshSecondaryStars"/>.</summary>
+/// <param name="Before">Secondary stars before the refresh.</param>
+/// <param name="Found">Secondary stars found around the primary.</param>
+/// <param name="Replaced">True when the found stars replaced the previous secondaries.</param>
+public readonly record struct SecondaryRefreshResult(int Before, int Found, bool Replaced);
+
 /// <summary>Guider state relevant to the subframe bounding box (PHD2 GetBoundingBox).</summary>
 public enum BoundingBoxState
 {
