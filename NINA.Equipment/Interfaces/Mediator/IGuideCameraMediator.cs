@@ -19,5 +19,13 @@ namespace NINA.Equipment.Interfaces.Mediator {
     /// (Profile.GuideCameraSettings). Guiders import this; ICameraMediator is always the imaging camera.
     /// </summary>
     public interface IGuideCameraMediator : ICameraMediator {
+
+        /// <summary>
+        /// Takes the capture block if nobody holds it, in one step, so two users of the guide camera (the guider, an API
+        /// capture) can't both see it free and start an exposure. Release it with
+        /// <see cref="ICameraMediator.ReleaseCaptureBlock(object)"/>.
+        /// </summary>
+        /// <returns>True when <paramref name="cameraConsumer"/> now holds the block, false when it was already held.</returns>
+        bool TryRegisterCaptureBlock(object cameraConsumer);
     }
 }
