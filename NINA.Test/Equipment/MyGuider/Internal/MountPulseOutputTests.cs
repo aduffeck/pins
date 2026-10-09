@@ -46,20 +46,27 @@ public class MountPulseOutputTests
         var mediator = new Mock<ITelescopeMediator>();
         mediator.Setup(m => m.GetInfo()).Returns(new TelescopeInfo { Connected = true });
         mediator.Setup(m => m.GetDevice()).Returns(telescope);
-        var started = Stopwatch.StartNew();
+        var clock = Stopwatch.StartNew();
+        long endedAtMs = -1;
         mediator.Setup(m => m.PulseGuide(It.IsAny<GuideDirections>(), It.IsAny<int>())).Callback(() =>
         {
             telescope.Pulsing = true;
-            started.Restart();
             // the driver reports the end of the pulse a little after it
-            _ = Task.Delay(pulseMs + driverLateMs).ContinueWith(_ => telescope.Pulsing = false);
+            _ = Task.Delay(pulseMs + driverLateMs).ContinueWith(_ =>
+            {
+                Interlocked.Exchange(ref endedAtMs, clock.ElapsedMilliseconds);
+                telescope.Pulsing = false;
+            });
         });
 
         await new MountPulseOutput(mediator.Object).PulseAsync(GuideDirection.North, pulseMs, CancellationToken.None);
+        long doneAtMs = clock.ElapsedMilliseconds;
 
-        started.Elapsed.TotalMilliseconds.Should().BeLessThan(pulseMs + driverLateMs + 25,
-            "the guider notices the end within a few ms (it waited up to 125 ms longer with the cache and a 25 ms poll)");
-        started.Elapsed.TotalMilliseconds.Should().BeGreaterThanOrEqualTo(pulseMs + driverLateMs - 5, "it waits for the driver");
+        long endedAt = Interlocked.Read(ref endedAtMs);
+        endedAt.Should().BeGreaterThanOrEqualTo(0, "it waits for the driver");
+        // measured from the moment the driver reported the end, so the test's own timer jitter does not count; the old
+        // property cache with a 25 ms poll noticed it up to 125 ms late, a 5 ms poll within a timer tick or two
+        (doneAtMs - endedAt).Should().BeLessThan(60, "the guider notices the end of the pulse within a few ms");
     }
 
     /// <summary>An INDI mount without a server: its device is a fake whose pulse flag the test sets.</summary>

@@ -131,8 +131,14 @@ internal sealed class GuideCameraSource(IGuideCameraMediator camera) : ICameraSo
         try
         {
             await camera.Capture(sequence, timeoutCts.Token, NoProgress.Instance).ConfigureAwait(false);
-            var exposure = await camera.Download(timeoutCts.Token).ConfigureAwait(false)
-                ?? throw new GuideCameraException("The guide camera returned no image.");
+            var exposure = await camera.Download(timeoutCts.Token).ConfigureAwait(false);
+            if (exposure is null)
+            {
+                // an INDI camera answers a cancelled download with no image: that is the stop or the timeout, not a camera fault
+                timeoutCts.Token.ThrowIfCancellationRequested();
+                throw new GuideCameraException("The guide camera returned no image.");
+            }
+
             var image = await exposure.ToImageData(NoProgress.Instance, timeoutCts.Token).ConfigureAwait(false);
             var pixels = image.Data.FlatArray ?? throw new GuideCameraException("The guide camera returned no pixel data.");
             // a copy: the engine works on the frame while the image data may still be in use elsewhere

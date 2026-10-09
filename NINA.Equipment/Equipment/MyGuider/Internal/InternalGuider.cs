@@ -56,6 +56,9 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
     /// <summary>How long a disconnect lets a running Guiding Coach session restore its temporary settings.</summary>
     private static readonly TimeSpan CoachCancelTimeout = TimeSpan.FromSeconds(10);
 
+    /// <summary>How long a disconnect waits for a cancelled dark library build: the guide camera aborts its exposure.</summary>
+    private static readonly TimeSpan DarkBuildStopTimeout = TimeSpan.FromSeconds(10);
+
     /// <summary>Added to the exposures of the auto-select attempts: download and processing of each frame on a slow Pi.</summary>
     private static readonly TimeSpan AutoSelectTimeoutMargin = TimeSpan.FromSeconds(20);
 
@@ -121,6 +124,17 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
     private ICameraSource? cameraSource;
     private string darkLibrary = string.Empty;
     private volatile bool buildingDarks;
+
+    // the dark library build in flight: a disconnect cancels it and waits for it before the guide camera is released
+    private readonly object darkGate = new();
+    private CancellationTokenSource? darkBuildCts;
+    private Task darkBuildDone = Task.CompletedTask;
+
+    // the pulse output of the connected session: the PulseOutput setting only applies at the next connect
+    private bool sessionUsesCameraSt4;
+
+    // each StartGuiding call; a cancelled call stops capturing only while no newer call has started
+    private int startGeneration;
     private volatile bool pauseWhenSlewing = true;
     private volatile bool pauseWhenTrackingOff = true;
 
@@ -326,6 +340,7 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
     {
         RefreshCachedOptions();
         var settings = options.ToEngineSettings();
+        sessionUsesCameraSt4 = false;
         ICameraSource camera;
         IPulseOutput output;
         IMountState mount;
@@ -368,6 +383,7 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
                 }
 
                 output = new CameraSt4PulseOutput(() => source.IndiDeviceName);
+                sessionUsesCameraSt4 = true;
             }
             else
             {
@@ -408,6 +424,9 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
 
     private async Task CleanupAsync()
     {
+        // before the loop stops and the guide camera is released: a dark still exposing would outlive both
+        await StopDarkBuildAsync().ConfigureAwait(false);
+
         var c = coach;
         coach = null;
         if (c is { IsRunning: true })
@@ -498,7 +517,7 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
     public async Task<bool> AutoSelectGuideStar()
     {
         var g = guider;
-        if (g is null || g.State.IsGuidingActive() || g.State == GuiderState.Calibrating)
+        if (g is null || g.State.IsGuidingActive() || g.State == GuiderState.Calibrating || RefusedWhileBuildingDarks())
         {
             return false;
         }
@@ -548,13 +567,12 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
             return false;
         }
 
-        if (buildingDarks)
+        if (RefusedWhileBuildingDarks())
         {
-            Notification.ShowError("Internal guider: a dark library is being built — wait until it finishes");
             return false;
         }
 
-        if (!options.IsSimulator && !options.UseCameraSt4)
+        if (!SimulatorInUse && !CameraSt4InUse)
         {
             var info = telescopeMediator.GetInfo();
             if (info is null || !info.Connected)
@@ -578,15 +596,19 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
 
         if (!forceCalibration && g.State == GuiderState.Calibrating)
         {
-            // a calibration is running (e.g. started from the UI): wait for it instead of restarting
+            // a calibration is running (e.g. started from the UI): wait for it instead of restarting, then settle below
             while (g.State == GuiderState.Calibrating)
             {
                 await Task.Delay(CalibrationPollInterval, ct).ConfigureAwait(false);
             }
 
-            return g.State == GuiderState.Guiding;
+            if (g.State != GuiderState.Guiding)
+            {
+                return false;
+            }
         }
 
+        int generation = Interlocked.Increment(ref startGeneration);
         AddProgressSink(progress);
         try
         {
@@ -607,8 +629,13 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
         }
         catch (OperationCanceledException)
         {
-            await g.StopCaptureAsync().ConfigureAwait(false);
-            return false;
+            // a newer start owns the guider now: stopping capture would end that one too
+            if (Volatile.Read(ref startGeneration) == generation)
+            {
+                await g.StopCaptureAsync().ConfigureAwait(false);
+            }
+
+            throw;
         }
         finally
         {
@@ -830,7 +857,7 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
     public Task<bool> StartLooping(CancellationToken ct)
     {
         var g = guider;
-        if (g is null)
+        if (g is null || RefusedWhileBuildingDarks())
         {
             return Task.FromResult(false);
         }
@@ -875,12 +902,6 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
             return false;
         }
 
-        if (g.State.IsCapturing() || buildingDarks || coach?.IsRunning == true)
-        {
-            Notification.ShowError("Internal guider: stop guiding/looping (and the Guiding Coach) before building a dark library");
-            return false;
-        }
-
         var exposures = DarkExposures.Where(e => e >= minExposureSeconds - DarkExposureTolerance && e <= maxExposureSeconds + DarkExposureTolerance).ToList();
         if (exposures.Count == 0)
         {
@@ -888,7 +909,27 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
         }
 
         framesPerExposure = Math.Clamp(framesPerExposure, 1, MaxDarkFramesPerExposure);
-        buildingDarks = true;
+
+        // the darks are taken outside the guide loop: the camera lease keeps the loop from starting meanwhile (a start
+        // requested anyway waits for the release), so the two never expose on the guide camera at once
+        CancellationTokenSource buildCts;
+        TaskCompletionSource done;
+        lock (darkGate)
+        {
+            if (buildingDarks || coach?.IsRunning == true || g.State.IsCapturing() || !g.TryLeaseCamera())
+            {
+                Notification.ShowError("Internal guider: stop guiding/looping (and the Guiding Coach) before building a dark library");
+                return false;
+            }
+
+            buildingDarks = true;
+            buildCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            darkBuildCts = buildCts;
+            done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            darkBuildDone = done.Task;
+        }
+
+        ct = buildCts.Token;
         int total = exposures.Count * framesPerExposure;
         int index = 0;
         try
@@ -919,6 +960,12 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
             Notification.ShowSuccess($"Internal guider: dark library built ({masters.Count} exposures)");
             return true;
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            Logger.Info("InternalGuider: dark library build cancelled");
+            Raise(AdvancedGuiderEventTypes.Darks, DateTimeOffset.UtcNow, new { status = "failed", message = "cancelled" });
+            return false;
+        }
         catch (Exception ex)
         {
             Logger.Error(ex);
@@ -928,7 +975,50 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
         }
         finally
         {
-            buildingDarks = false;
+            lock (darkGate)
+            {
+                darkBuildCts = null;
+                buildingDarks = false;
+            }
+
+            buildCts.Dispose();
+            g.ReleaseCamera();
+            done.SetResult();
+        }
+    }
+
+    /// <summary>
+    /// While a dark library is being built the guide camera takes darks: guiding, looping and star selection are refused
+    /// until it is done.
+    /// </summary>
+    private bool RefusedWhileBuildingDarks()
+    {
+        if (!buildingDarks)
+        {
+            return false;
+        }
+
+        Notification.ShowError("Internal guider: a dark library is being built — wait until it finishes");
+        return true;
+    }
+
+    /// <summary>Cancels a dark library build in flight and waits until it has stopped using the guide camera.</summary>
+    private async Task StopDarkBuildAsync()
+    {
+        Task done;
+        lock (darkGate)
+        {
+            darkBuildCts?.Cancel();
+            done = darkBuildDone;
+        }
+
+        try
+        {
+            await done.WaitAsync(DarkBuildStopTimeout).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            Logger.Warning($"InternalGuider: the dark library build did not stop within {DarkBuildStopTimeout.TotalSeconds:F0} s");
         }
     }
 
@@ -1600,6 +1690,11 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
         return new SettleParams(pixels, time, timeout);
     }
 
+    // while connected, what the session uses: GuideSource and PulseOutput are saved at once but only apply at the next connect
+    private bool SimulatorInUse => guider is not null ? simulator is not null : options.IsSimulator;
+
+    private bool CameraSt4InUse => guider is not null ? sessionUsesCameraSt4 : options.UseCameraSt4;
+
     /// <summary>
     /// The guide camera as calibrations, darks and incidents name it: "Simulator", or the slot's camera (also while the
     /// guider is not connected, e.g. to clear its calibration); null when there is none.
@@ -1639,7 +1734,7 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
         string profileId = profileService.ActiveProfile.Id.ToString();
         string? cameraName = GuideCameraName;
         string mountName = simulator is not null ? "Simulator"
-            : options.UseCameraSt4 ? "ST4"
+            : CameraSt4InUse ? "ST4"
             : profileService.ActiveProfile.TelescopeSettings.Id is { Length: > 0 } tid && tid != "No_Device" ? tid : "Mount";
         if (string.IsNullOrEmpty(cameraName))
         {
@@ -1710,7 +1805,7 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
     // the worm belongs to the mount: one curve per profile and mount, whatever guide camera (connected or not)
     private PeriodicErrorKey PeriodicErrorKeyNow()
     {
-        string mountName = options.IsSimulator ? "Simulator"
+        string mountName = SimulatorInUse ? "Simulator"
             : profileService.ActiveProfile.TelescopeSettings.Id is { Length: > 0 } tid && tid != "No_Device" ? tid : "Mount";
         return new PeriodicErrorKey(profileService.ActiveProfile.Id.ToString(), mountName);
     }
@@ -1884,7 +1979,7 @@ public sealed class InternalGuider : BaseINPC, IAdvancedGuider, IGuidingCoach, I
         {
             mount = "Simulator";
         }
-        else if (options.UseCameraSt4)
+        else if (CameraSt4InUse)
         {
             mount = "ST4";
         }

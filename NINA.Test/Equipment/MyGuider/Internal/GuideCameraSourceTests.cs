@@ -135,6 +135,21 @@ public class GuideCameraSourceTests
     }
 
     [Test]
+    public async Task A_download_cancelled_by_the_stop_is_the_stop_not_a_camera_error()
+    {
+        // an INDI camera answers a cancelled download with no image
+        using var stop = new CancellationTokenSource();
+        mediator.Setup(m => m.Download(It.IsAny<CancellationToken>())).ReturnsAsync(() =>
+        {
+            stop.Cancel();
+            return (IExposureData)null!;
+        });
+        var source = Acquired();
+
+        await source.Invoking(s => s.CaptureAsync(new CaptureRequest(1000), stop.Token)).Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Test]
     public async Task A_disconnected_guide_camera_is_a_camera_error()
     {
         var source = Acquired();

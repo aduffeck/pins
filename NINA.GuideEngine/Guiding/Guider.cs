@@ -1966,10 +1966,13 @@ public sealed partial class Guider : IAsyncDisposable
         CompletePending(SettleResult.Failed(code, detail));
     }
 
+    // a newer start or dither carries on what the pending one began: the replaced caller gets the newer one's outcome
+    // instead of a failure while guiding goes on
     private void ReplacePending(PendingOperation op)
     {
-        CompletePending(SettleResult.Failed(GuideErrorCode.None, "superseded"));
+        var replaced = pending;
         pending = op;
+        replaced?.Follow(op);
     }
 
     private void CompletePending(SettleResult result)
@@ -2137,6 +2140,15 @@ public sealed partial class Guider : IAsyncDisposable
         {
             reg.Dispose();
             tcs.TrySetResult(r);
+        }
+
+        /// <summary>Completes with the outcome of the operation that replaced this one.</summary>
+        public void Follow(PendingOperation newer)
+        {
+            newer.Task.ContinueWith(t => Complete(t.IsCompletedSuccessfully
+                    ? t.Result
+                    : SettleResult.Failed(GuideErrorCode.None, "the operation that replaced this one was cancelled")),
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         }
     }
 

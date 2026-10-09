@@ -151,8 +151,11 @@ public sealed partial class Guider
         }
     }
 
-    /// <summary>Reserves the camera for captures outside the loop. False while the loop runs.</summary>
-    internal bool TryLeaseCamera()
+    /// <summary>
+    /// Reserves the camera for captures outside the loop (the coach, the host's dark library). False while the loop runs;
+    /// a loop start requested meanwhile waits for <see cref="ReleaseCamera"/>.
+    /// </summary>
+    public bool TryLeaseCamera()
     {
         lock (loopLock)
         {
@@ -167,7 +170,7 @@ public sealed partial class Guider
     }
 
     /// <summary>Releases the camera; a loop start requested meanwhile happens now.</summary>
-    internal void ReleaseCamera()
+    public void ReleaseCamera()
     {
         bool start;
         CancellationToken token;

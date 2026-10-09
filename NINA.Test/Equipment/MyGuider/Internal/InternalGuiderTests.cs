@@ -7,10 +7,12 @@ using System.Text.Json;
 using FluentAssertions;
 using Moq;
 using NINA.Core.Enum;
+using NINA.Core.Model;
 using NINA.Equipment.Equipment.MyGuider.Advanced;
 using NINA.Equipment.Equipment.MyTelescope;
 using NINA.Equipment.Interfaces;
 using NINA.Equipment.Interfaces.Mediator;
+using NINA.Equipment.Model;
 using NINA.Profile;
 using NINA.Profile.Interfaces;
 using NUnit.Framework;
@@ -522,6 +524,62 @@ public class InternalGuiderLifecycleTests
             guider.Connected.Should().BeFalse();
             slot.Verify(m => m.ReleaseCaptureBlock(It.IsAny<object>()), Times.AtLeastOnce(), "the guide camera is given back");
             slot.Verify(m => m.Disconnect(), Times.Never, "the guider never disconnects the guide camera itself");
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+            {
+                Directory.Delete(dir, true);
+            }
+        }
+    }
+
+    [Test]
+    public async Task While_a_dark_library_is_built_the_guide_loop_waits_and_a_disconnect_ends_the_build_first()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "pins-internal-guider-" + Guid.NewGuid().ToString("N"));
+        var (_, service, _) = IncidentSettingsTests.Create();
+        var info = new CameraInfo { Connected = true, Name = "Guide camera", DeviceId = "guide", XSize = 640, YSize = 480, BitDepth = 12, PixelSize = 3.75 };
+        var slot = new Mock<IGuideCameraMediator>();
+        slot.Setup(m => m.GetInfo()).Returns(() => info);
+        slot.Setup(m => m.TryRegisterCaptureBlock(It.IsAny<object>())).Returns(true);
+        var darkExposing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // a dark exposure that lasts until it is cancelled
+        slot.Setup(m => m.Capture(It.IsAny<CaptureSequence>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ApplicationStatus>>()))
+            .Returns<CaptureSequence, CancellationToken, IProgress<ApplicationStatus>>((_, ct, _) =>
+            {
+                darkExposing.TrySetResult();
+                return Task.Delay(Timeout.Infinite, ct);
+            });
+        var calls = new List<string>();
+        slot.Setup(m => m.AbortExposure()).Callback(() => { lock (calls) calls.Add("abort"); });
+        slot.Setup(m => m.ReleaseCaptureBlock(It.IsAny<object>())).Callback(() => { lock (calls) calls.Add("release"); });
+        try
+        {
+            var guider = new InternalGuider(service.Object, new Mock<ITelescopeMediator>().Object, slot.Object, dir,
+                Path.Combine(dir, "periodic-error.json"), Path.Combine(dir, "pulse-model.json"));
+            foreach (var (name, value) in new[] { ("SaveGuideLog", "false"), ("ReuseCalibration", "false"), ("UseDarkLibrary", "false") })
+            {
+                guider.TrySetSetting(name, value, out _).Should().BeTrue();
+            }
+
+            (await guider.Connect(CancellationToken.None)).Should().BeTrue();
+            var build = guider.BuildDarkLibrary(1, 1, 1, CancellationToken.None);
+            await darkExposing.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            (await guider.StartLooping(CancellationToken.None)).Should().BeFalse("the dark exposure has the guide camera");
+            (await guider.AutoSelectGuideStar()).Should().BeFalse();
+            (await guider.StartGuiding(false, null, CancellationToken.None)).Should().BeFalse();
+            slot.Verify(m => m.Capture(It.IsAny<CaptureSequence>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ApplicationStatus>>()), Times.Once,
+                "only the dark exposure");
+
+            await Task.Run(guider.Disconnect);
+
+            (await build.WaitAsync(TimeSpan.FromSeconds(10))).Should().BeFalse("the disconnect cancelled the build");
+            lock (calls)
+            {
+                calls.Should().Equal(["abort", "release"], "the dark exposure ends before the guide camera is given back");
+            }
         }
         finally
         {
