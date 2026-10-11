@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+### Added
+- Internal guider simulator: the scenario `HarmonicDrive`, a strain-wave mount of the AM5 class (±18″ at 430.8 s with harmonics, a curve that changes over a few cycles, short components at 2.9 s and 62 s, guide rate 0.9×). For tests, two more strain-wave variants (`HarmonicDriveModern`, `HarmonicDriveRough`), periodic-error terms whose amplitude and phase change along the gear, and slow seeing layers that correlate successive frames. Faint sky backgrounds (short exposures) render about three times faster.
 ### Changed
 - Internal guider, Predictive algorithm: its memories last a time instead of a number of frames. The choice of model, the seeing estimate and the learning phase cover 240 s, the usual noise level of a frame 12 minutes, each at least as many frames as before (120, 120 and 360). With guide exposures shorter than about 2 s they used to cover only part of that time: at 0.5 s the model memory was under 2 minutes, shorter than one turn of a worm. Frame intervals of 2 s and longer guide exactly as before.
 ### Fixed
