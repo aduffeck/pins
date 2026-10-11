@@ -41,8 +41,8 @@ pace, min move, e.g. in a Coach trial). A new binning starts it over (its estima
 
 **Memory in time.** The score memory (with the seeing estimate) and the learning phase last 240 s, the median of the
 usual centroid σ 12 minutes, each at least its frame count: N = max(N_min, T / Δt) frames at the measured frame interval
-Δt, forgetting by λ = 1 − 1/N per frame. What they average over takes time (the periodic error's cycle, a change of
-seeing, a cloud passage); telling the filters apart takes frames, hence the floor (at 8 s, 240 s are only 30 frames).
+Δt, forgetting by λ = 1 − 1/N per frame. What they average over takes time (a change of seeing, a cloud passage, part
+of a periodic-error cycle); telling the filters apart takes frames, hence the floor (at 8 s, 240 s are only 30 frames).
 240 s and 12 minutes are the 120 and 360 frames of 2 s, where everything above was tuned, so frame intervals of 2 s and
 longer run exactly as before (checked bit for bit on simulated nights at 2 and 2.5 s); at 0.5 s frames (Δt ≈ 0.85 s)
 the memory is 282 frames instead of 120. The learning phase counts frames and seconds both, so it stays over when a

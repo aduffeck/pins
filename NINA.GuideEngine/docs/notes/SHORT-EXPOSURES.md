@@ -32,7 +32,7 @@ Why this matters at short exposures:
 - **The cloud median is too short.** `ALGORITHMS.md` ("What the simulator decided") chose 360 frames over 120 because
   a 4-minute cloud passage must not become the new normal. At 0.5 s, 360 frames are 5 minutes, close to the
   passage itself.
-- **The learning phase ends after 1.7 minutes,** before the scores have seen a single cycle of the periodic error.
+- **The learning phase ends after 1.7 minutes,** well under half the time it takes at 2 s.
 
 Already in time, not affected: the Dec drift estimator (300 s, at least 25 frames), the periodic-error estimator (its
 own time base; frames closer than 1.2 s are averaged).
@@ -62,6 +62,12 @@ least 2.1 s apart (plus 100 ms download, plus the pulses), so N stays at the flo
 Those runs stay bit-identical: every guide step and debug note of 25-minute runs (GoodMount, Clouds, HighSeeing and
 Backlash at 2 s, GoodMount at 2.5 s) was dumped before and after the change and compared.
 
+**What this does not fix.** 240 s is still shorter than one periodic-error cycle (287–431 s on harmonic drives, 478 s
+on the rig's EQMod worm), at any exposure. The rule makes 0.5–1 s behave as 2 s does, nothing more. That is enough
+where it counts: while the periodic-error prediction is applied, the filters get its change as a known input
+(`periodicStep`) and score only the residual, so the model choice follows the curve's phase mainly while the
+prediction is off, in the first cycles or on a mount whose curve is rejected (`HarmonicDriveRough`).
+
 **Learning phase.** It ends when the scores have been taught for both N_min frames and T seconds (summing Δt over the
 frames that taught them). Counting both keeps it monotonic: if the exposure is shortened after the phase ended, N
 grows, but the phase doesn't go back to "Learning". `Progress` = min(frames / N_min, seconds / T). At 2 s and longer
@@ -89,8 +95,10 @@ fewer of the stored entries.
 
 ## 4. Simulator: what it lacked for short exposures
 
-Two gaps, and a third found on the way (§4.3). The new options are off by default, so every existing scenario and
-result stays as it is.
+Two gaps, and a third found on the way (§4.3). The new options (§4.1, §4.2) are off by default. The Poisson table
+(§4.3) is not an option: below 20 e⁻ of background per pixel (exposures under about 1 s in the scenarios) every
+scenario now draws different random numbers than before, so such runs are no longer bit-identical to earlier ones.
+At 2 s the background is above that and nothing changes.
 
 ### 4.1 A harmonic-drive mount
 
