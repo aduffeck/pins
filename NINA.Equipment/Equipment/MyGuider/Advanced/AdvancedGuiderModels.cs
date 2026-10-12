@@ -486,7 +486,10 @@ namespace NINA.Equipment.Equipment.MyGuider.Advanced {
         /// <summary>Weight in the combined offset: 1 for the primary, less for used secondaries, 0 when not used.</summary>
         public double Weight { get; set; }
 
-        /// <summary>Why the star was not used this frame (Miss, Lost, NotMeasured, ...), null when used.</summary>
+        /// <summary>
+        /// Why the star was not used this frame, null when used: a name of NINA.GuideEngine.MultiStar.TrackedStarStatus
+        /// (Miss, Lost, NotGuiding, Settling, Stabilizing, BeyondMaxStars, GuideStarLost, ...).
+        /// </summary>
         public string? RejectReason { get; set; }
     }
 

@@ -106,7 +106,12 @@ public enum TrackedStarStatus
     /// <summary>Secondary evicted as a probable hot pixel (zero displacement, "DZ").</summary>
     DroppedZero,
 
-    /// <summary>Secondary not measured this frame (not guiding, settling, stabilising or beyond MaxStars).</summary>
+    /// <summary>
+    /// Secondary not measured this frame, for none of the reasons below (e.g. no primary selected, or the primary sits
+    /// exactly on the lock position).
+    /// The reasons that follow are its more specific forms; <see cref="TrackedStarStatusExtensions.IsUnmeasured"/> covers
+    /// them all.
+    /// </summary>
     NotMeasured,
 
     /// <summary>Secondary reference re-snapped after a lock position change.</summary>
@@ -117,6 +122,49 @@ public enum TrackedStarStatus
 
     /// <summary>Secondary measured for the dropout estimate but disagreed with the others.</summary>
     FallbackRejected,
+
+    /// <summary>Secondary not measured: secondaries count only while guiding (looping, calibrating, no lock position, or
+    /// mount guiding disabled).</summary>
+    NotGuiding,
+
+    /// <summary>Secondary not measured: the guider is settling (after the start of guiding or a dither).</summary>
+    Settling,
+
+    /// <summary>
+    /// Secondary not measured: the tracker is stabilising, during the first frames of guiding or after the primary moved
+    /// more than <see cref="MultiStarOptions.StabilitySigmaX"/> times its usual scatter (PHD2's stabilisation period).
+    /// </summary>
+    Stabilizing,
+
+    /// <summary>Secondary not measured: the frame already had MaxStars stars (primary included).</summary>
+    BeyondMaxStars,
+
+    /// <summary>Secondary not measured: the primary was lost or its jump rejected, and no dropout estimate measured it.</summary>
+    GuideStarLost,
+
+    /// <summary>Secondary not measured: subframes hold the primary only.</summary>
+    Subframe,
+
+    /// <summary>Secondary not measured: multi-star guiding is off.</summary>
+    MultiStarOff,
+}
+
+/// <summary>Groups of <see cref="TrackedStarStatus"/>.</summary>
+public static class TrackedStarStatusExtensions
+{
+    /// <summary>Not measured this frame: <see cref="TrackedStarStatus.NotMeasured"/> or one of its specific reasons.</summary>
+    public static bool IsUnmeasured(this TrackedStarStatus status) => status is TrackedStarStatus.NotMeasured or TrackedStarStatus.NotGuiding
+        or TrackedStarStatus.Settling or TrackedStarStatus.Stabilizing or TrackedStarStatus.BeyondMaxStars or TrackedStarStatus.GuideStarLost
+        or TrackedStarStatus.Subframe or TrackedStarStatus.MultiStarOff;
+
+    /// <summary>
+    /// <see cref="IsUnmeasured"/> for a reject reason as published (<see cref="Guiding.StarInfo.RejectReason"/>), including
+    /// recordings from before the specific reasons, which say "NotMeasured" for all of them.
+    /// </summary>
+    public static bool IsUnmeasuredReason(string? reason) => reason is not null && UnmeasuredNames.Contains(reason);
+
+    private static readonly HashSet<string> UnmeasuredNames =
+        Enum.GetValues<TrackedStarStatus>().Where(IsUnmeasured).Select(s => s.ToString()).ToHashSet(StringComparer.Ordinal);
 }
 
 /// <summary>Measurement snapshot of a star.</summary>

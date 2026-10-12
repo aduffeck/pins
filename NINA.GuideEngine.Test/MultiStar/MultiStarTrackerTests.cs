@@ -118,9 +118,50 @@ public class MultiStarTrackerTests
         res.CameraOffset.X.Should().BeApproximately(1.0, 0.1);
         res.CameraOffset.Y.Should().BeApproximately(-0.5, 0.1);
         res.Refined.Should().BeFalse("secondaries are only used while guiding");
-        res.Stars.Skip(1).Should().OnlyContain(s => s.Status == TrackedStarStatus.NotMeasured);
+        res.Stars.Skip(1).Should().OnlyContain(s => s.Status == TrackedStarStatus.NotGuiding);
         res.Stars[0].Status.Should().Be(TrackedStarStatus.Primary);
     }
+
+    [Test]
+    public void Unmeasured_secondaries_say_why()
+    {
+        IEnumerable<TrackedStarStatus> Unmeasured(MultiStarFrameResult r) => r.Stars.Skip(1).Select(s => s.Status).Where(s => s.IsUnmeasured());
+
+        var scene = new Scene();
+        var t = NewTracker();
+        var lockPos = t.AutoSelect(scene.Render(0, 0, 1)).LockPosition;
+        Unmeasured(t.ProcessFrame(scene.Render(0, 0, 2), GuidePoint.Invalid, TrackerState.Looping, T(1)))
+            .Should().HaveCount(6).And.OnlyContain(s => s == TrackedStarStatus.NotGuiding, "no lock position");
+        Unmeasured(t.ProcessFrame(scene.Render(0, 0, 3), lockPos, new TrackerState(true, IsSettling: true), T(2)))
+            .Should().HaveCount(6).And.OnlyContain(s => s == TrackedStarStatus.Settling);
+        Unmeasured(t.ProcessFrame(scene.Render(0, 0, 4), lockPos, TrackerState.Guiding, T(3)))
+            .Should().HaveCount(6).And.OnlyContain(s => s == TrackedStarStatus.Stabilizing, "the first guiding frames stabilise");
+
+        // MaxStars 3: the primary and two secondaries, the other four wait
+        var limited = NewTracker(f: new StarFinderOptions { MaxStars = 3 });
+        var results = new List<MultiStarFrameResult>();
+        SelectAndGuide(limited, scene, 20, results);
+        var last = results[^1];
+        last.Stars.Skip(1).Count(s => !s.Status.IsUnmeasured()).Should().Be(2);
+        Unmeasured(last).Should().HaveCount(4).And.OnlyContain(s => s == TrackedStarStatus.BeyondMaxStars);
+
+        // a lost primary without the dropout estimate leaves the others unmeasured
+        var noFallback = NewTracker(new MultiStarOptions { PrimaryDropoutFallback = false });
+        var lock2 = SelectAndGuide(noFallback, scene, 20);
+        Unmeasured(noFallback.ProcessFrame(scene.Render(0.8, -0.6, 800, omit: new HashSet<int> { 0 }), lock2, TrackerState.Guiding, T(21)))
+            .Should().HaveCount(6).And.OnlyContain(s => s == TrackedStarStatus.GuideStarLost);
+    }
+
+    [TestCase("NotMeasured", true)]
+    [TestCase("NotGuiding", true)]
+    [TestCase("Stabilizing", true)]
+    [TestCase("BeyondMaxStars", true)]
+    [TestCase("Lost", false)]
+    [TestCase("Miss", false)]
+    [TestCase("3", false)]
+    [TestCase(null, false)]
+    public void Unmeasured_reasons_include_the_old_NotMeasured(string? reason, bool unmeasured)
+        => TrackedStarStatusExtensions.IsUnmeasuredReason(reason).Should().Be(unmeasured);
 
     [Test]
     public void Guiding_StabilisesThenUsesWeightedSecondaries()

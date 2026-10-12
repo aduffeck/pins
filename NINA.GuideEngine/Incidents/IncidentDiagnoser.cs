@@ -4,6 +4,7 @@ using System.Globalization;
 using NINA.GuideEngine.Calibration;
 using NINA.GuideEngine.Core;
 using NINA.GuideEngine.Guiding;
+using NINA.GuideEngine.MultiStar;
 
 namespace NINA.GuideEngine.Incidents;
 
@@ -768,7 +769,8 @@ internal static class IncidentDiagnoser
     private static double Distance(StarInfo s, double x, double y) => Math.Sqrt(((s.X - x) * (s.X - x)) + ((s.Y - y) * (s.Y - y)));
 
     /// <summary>A secondary measured in its frame ("FallbackRejected" was measured too, only left out of the primary-dropout estimate).</summary>
-    private static bool MeasuredSecondary(StarInfo s) => !s.IsPrimary && s.RejectReason is not ("NotMeasured" or "DroppedZero" or "Lost");
+    private static bool MeasuredSecondary(StarInfo s) =>
+        !s.IsPrimary && s.RejectReason is not ("DroppedZero" or "Lost") && !TrackedStarStatusExtensions.IsUnmeasuredReason(s.RejectReason);
 
     // Clouds: all tracked stars' SNR (mass) fell together by ≥ 50 % within ≤ 60 s near the trigger and recovered afterwards,
     // or the stars were lost.
@@ -1527,7 +1529,7 @@ internal static class IncidentDiagnoser
                 return PrimarySignal(f, s);
             }
 
-            if (s.RejectReason is "NotMeasured" or "DroppedZero")
+            if (s.RejectReason is "DroppedZero" || TrackedStarStatusExtensions.IsUnmeasuredReason(s.RejectReason))
             {
                 return null;
             }

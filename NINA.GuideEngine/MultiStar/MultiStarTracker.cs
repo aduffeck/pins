@@ -34,6 +34,10 @@ public sealed class MultiStarTracker
     private bool stabilizing;
     private bool lockPositionMoved;
     private int starsUsed;
+
+    // why this frame's secondaries that weren't measured weren't (their published status instead of NotMeasured)
+    private TrackedStarStatus unmeasured = TrackedStarStatus.NotMeasured;
+
     private GuidePoint lastLock = GuidePoint.Invalid;
     private bool wasPaused;
     private int frameWidth;
@@ -314,6 +318,7 @@ public sealed class MultiStarTracker
         frameWidth = frame.Width;
         frameHeight = frame.Height;
         evicted.Clear();
+        unmeasured = TrackedStarStatus.NotMeasured;
         foreach (var gs in guideStars)
             gs.ResetFrameStatus();
 
@@ -386,6 +391,7 @@ public sealed class MultiStarTracker
         if (!distanceChecker.CheckDistance(distance, raOnly, tolerance, state.IsGuiding, state.IsPaused, state.IsSettling, Distances, now))
         {
             primary.SetError(StarFindResult.Error);
+            unmeasured = TrackedStarStatus.GuideStarLost;
             return new MultiStarFrameResult
             {
                 Outcome = TrackerOutcome.JumpRejected,
@@ -423,9 +429,14 @@ public sealed class MultiStarTracker
             else
             {
                 starsUsed = 1;
+                unmeasured = options.MultiStarEnabled ? TrackedStarStatus.Subframe : TrackedStarStatus.MultiStarOff;
             }
 
             Distances.Update(distance, RaDistance(offset), state.IsGuiding, now);
+        }
+        else
+        {
+            unmeasured = TrackedStarStatus.NotGuiding;
         }
 
         string status = $"m={primary.Mass:F0} SNR={primary.Snr:F1}" + (primary.LastFindResult == StarFindResult.Saturated ? " Saturated" : string.Empty);
@@ -465,6 +476,9 @@ public sealed class MultiStarTracker
         var fo = FinderOptions;
 
         // Primary star is in position 0 of the list
+        unmeasured = !state.IsGuiding || !state.GuidingEnabled ? TrackedStarStatus.NotGuiding
+            : state.IsSettling ? TrackedStarStatus.Settling
+            : TrackedStarStatus.NotMeasured;
         if (state.IsGuiding && guideStars.Count > 1 && state.GuidingEnabled && !state.IsSettling)
         {
             double sumWeights = 1;
@@ -522,6 +536,11 @@ public sealed class MultiStarTracker
                 stabilizing = true; // get some data for primary star movement
             }
 
+            if (stabilizing)
+            {
+                unmeasured = TrackedStarStatus.Stabilizing;
+            }
+
             if (!stabilizing && guideStars.Count > 1 && (sumX != 0 || sumY != 0))
             {
                 int maxStars = fo.MaxStars;
@@ -529,7 +548,10 @@ public sealed class MultiStarTracker
                 while (idx < guideStars.Count)
                 {
                     if (starsUsed >= maxStars || guideStars.Count == 1)
+                    {
+                        unmeasured = TrackedStarStatus.BeyondMaxStars;
                         break;
+                    }
                     var gs = guideStars[idx];
                     bool found;
                     if (gs.WasLost)
@@ -647,6 +669,7 @@ public sealed class MultiStarTracker
     private MultiStarFrameResult HandleLost(GuideFrame frame, GuidePoint lockPosition, TrackerState state, long now, StarFindResult code,
         StarSnapshot measured, MassLimits? limits)
     {
+        unmeasured = TrackedStarStatus.GuideStarLost;
         if (options.PrimaryDropoutFallback && options.MultiStarEnabled && !options.UseSubframes && frame.Subframe.IsEmpty && lockPosition.IsValid &&
             state.IsGuiding && guideStars.Count - 1 >= options.FallbackMinStars && TryEstimatePrimary(frame, out var estimate, out int used))
         {
@@ -839,7 +862,11 @@ public sealed class MultiStarTracker
                 primaryStatus == TrackedStarStatus.Primary ? 1.0 : 0.0, GuidePoint.Invalid, 0, 0),
         };
         for (int i = 1; i < guideStars.Count; i++)
-            list.Add(guideStars[i].ToInfo(i));
+        {
+            var info = guideStars[i].ToInfo(i);
+            list.Add(info.Status == TrackedStarStatus.NotMeasured ? info with { Status = unmeasured } : info);
+        }
+
         list.AddRange(evicted);
         return list;
     }
