@@ -109,6 +109,18 @@ fi
 # refuse with a message instead of doing anything.
 check in_container 'out=$(runuser -u pins -- sudo -n /usr/sbin/shutdown -h now 2>&1); [ $? -eq 1 ] && echo "$out" | grep -q "not available"'
 
+# Host settings shim (regional settings): without the host's D-Bus socket the
+# time zone falls back to the container's and the locale is set, and
+# changing the host's zone is refused with a message.
+check in_container 'runuser -u sysupdate-api -- timedatectl show --property=Timezone --value | grep -q .'
+check in_container 'runuser -u sysupdate-api -- timedatectl list-timezones | grep -qx Europe/Berlin'
+check in_container 'runuser -u sysupdate-api -- localectl list-x11-keymap-layouts | grep -qx de'
+check in_container 'out=$(runuser -u sysupdate-api -- sudo -n /usr/bin/timedatectl set-timezone UTC 2>&1); [ $? -eq 1 ] && echo "$out" | grep -q "not available"'
+check in_container 'out=$(runuser -u sysupdate-api -- sudo -n /usr/bin/timedatectl set-ntp false 2>&1); [ $? -eq 1 ] && echo "$out" | grep -q "PINS_HOST_CLOCK_CONTROL"'
+if in_container 'supervisorctl status pinsdaemon | grep -q RUNNING' 2>/dev/null; then
+  check sh -c 'curl -sf -H "Authorization: Bearer ${PINSDAEMON_API_TOKEN:-zZDqJ3IKeFaIZqG2JIFvsxzA5E48GC2gyGVagHFZqC0OMtgoupUDZCPhQDYKm35d}" http://127.0.0.1:8000/system/localization | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if all(d.get(k) for k in (\"locale\",\"timezone\")) else 1)"'
+fi
+
 if in_container 'test -x /usr/local/bin/astap_cli' 2>/dev/null; then
   check in_container 'astap_cli -h >/dev/null 2>&1 || astap_cli 2>&1 | grep -qi astap'
   check in_container 'test -d /usr/share/astap/data/ && test -w /home/pins/.local/share/astap'
