@@ -167,7 +167,7 @@ docker build --network=host \
 | `ninaapi` | ninaAPI (REST/WebSocket API used by Touch-N-Stars) | `nitr57/ninaAPI` (`unstable`) |
 | `touch-n-stars` | Touch-N-Stars plugin + web app | `nitr57/N.I.N.A-Plugin-for-Touch-N-Stars` (`unstable`) |
 | `joko` | HocusFocus | `nitr57/joko.nina.plugins` |
-| `livestack` | LiveStack | `nitr57/nina.plugin.livestack` |
+| `livestack` | LiveStack | `nitr57/nina.plugin.livestack` (`unstable`) |
 | `polaralignment` | Polar Alignment | `nitr57/nina.plugin.polaralignment` |
 | `nightsummary` | Night Summary | `nitr57/nina.plugin.nightsummary` |
 | `orbuculum` | Orbuculum | `nitr57/nina.plugin.orbuculum` |

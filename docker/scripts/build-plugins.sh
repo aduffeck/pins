@@ -28,7 +28,7 @@ plugin_spec() {
     ninaapi)        echo "https://github.com/nitr57/ninaAPI|unstable|ninaAPI|ninaAPI/ninaAPI.csproj|ninaAPI|" ;;
     touch-n-stars)  echo "https://github.com/nitr57/N.I.N.A-Plugin-for-Touch-N-Stars|unstable|Touch-N-Stars|Touch-N-Stars/Touch-N-Stars.csproj|Touch-N-Stars|frontend" ;;
     joko)           echo "https://github.com/nitr57/joko.nina.plugins||joko.nina.plugins|Joko.NINA.Plugins/Joko.NINA.Plugins.HocusFocus/Joko.NINA.Plugins.HocusFocus.csproj|joko.nina.plugins|" ;;
-    livestack)      echo "https://github.com/nitr57/nina.plugin.livestack||LiveStack|nina.plugin.livestack.csproj|LiveStack|" ;;
+    livestack)      echo "https://github.com/nitr57/nina.plugin.livestack|unstable|LiveStack|nina.plugin.livestack.csproj|LiveStack|" ;;
     polaralignment) echo "https://github.com/nitr57/nina.plugin.polaralignment||PolarAlignment|PolarAlignment/NINA.Plugins.PolarAlignment.csproj|PolarAlignment|" ;;
     nightsummary)   echo "https://github.com/nitr57/nina.plugin.nightsummary||nina.plugin.nightsummary|NINA.Plugin.NightSummary/NINA.Plugin.NightSummary.csproj|NINA.Plugin.NightSummary|" ;;
     orbuculum)      echo "https://github.com/nitr57/nina.plugin.orbuculum||nina.plugin.orbuculum|Orbuculum/Orbuculum.csproj|Orbuculum|" ;;
