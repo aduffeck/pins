@@ -330,6 +330,7 @@ COPY --chmod=755 docker/scripts/fetch-skymap.sh /usr/local/bin/pins-download-sky
 COPY --chmod=755 docker/systemctl-shim.sh /usr/local/lib/pins/systemctl-shim
 COPY --chmod=440 docker/sudoers-pinsdaemon /etc/sudoers.d/pinsdaemon
 COPY --chmod=755 docker/power-shim.sh /usr/local/lib/pins/power-shim
+COPY --chmod=755 docker/host-settings.sh /usr/local/lib/pins/host-settings
 COPY --chmod=440 docker/sudoers-pins /etc/sudoers.d/pins
 COPY docker/supervisord.conf /etc/pins/supervisord.conf
 COPY --from=indi /indi-root/ /
@@ -361,15 +362,18 @@ COPY --from=external /runtime-packages.txt /tmp/pins-deps/external.txt
 # build stages). Package names that carry a version or t64 suffix are looked
 # up so the same Dockerfile works across Ubuntu releases.
 # There is no systemd in the container: systemctl becomes a shim onto
-# supervisord (PHD2 control by pinsdaemon) and shutdown/poweroff/reboot
+# supervisord (PHD2 control by pinsdaemon), shutdown/poweroff/reboot
 # become the host power control shim (docker/power-shim.sh, used by the
-# Touch-N-Stars Shutdown/Restart buttons); the originals are diverted.
+# Touch-N-Stars Shutdown/Restart buttons), and timedatectl/localectl (plus a
+# raspi-config that only reports the Wi-Fi country) become the host settings
+# shim (docker/host-settings.sh, the Touch-N-Stars regional settings); the
+# originals are diverted. iw reads the host's Wi-Fi regulatory country.
 RUN set -eu; \
     apt-get update; \
     pick() { apt-cache search --names-only "$1" | awk '{print $1}' | sort -V | tail -n1; }; \
     apt-get install -y --no-install-recommends \
       ca-certificates tzdata curl procps libusb-1.0-0 libudev1 libgssapi-krb5-2 \
-      supervisor xvfb fonts-dejavu-core python3 sudo libhidapi-hidraw0 libhidapi-libusb0 inotify-tools unzip \
+      supervisor xvfb fonts-dejavu-core python3 sudo libhidapi-hidraw0 libhidapi-libusb0 inotify-tools unzip iw \
       "$(pick '^libicu[0-9]+$')" "$(pick '^libssl3(t64)?$')" \
       "$(pick '^libgphoto2-6(t64)?$')" "$(pick '^libgphoto2-port12(t64)?$')" \
       "$(pick '^libcfitsio[0-9]+(t64)?$')" "$(pick '^libraw[0-9]+(t64)?$')" \
@@ -402,16 +406,25 @@ RUN set -eu; \
     for c in shutdown poweroff reboot; do \
       if [ -e "/usr/sbin/$c" ] || [ -L "/usr/sbin/$c" ]; then dpkg-divert --local --rename --add "/usr/sbin/$c"; fi; \
       install -m 755 /usr/local/lib/pins/power-shim "/usr/sbin/$c"; \
-    done
+    done; \
+    for c in timedatectl localectl; do \
+      if [ -e "/usr/bin/$c" ]; then dpkg-divert --local --rename --add "/usr/bin/$c"; fi; \
+      install -m 755 /usr/local/lib/pins/host-settings "/usr/bin/$c"; \
+    done; \
+    install -m 755 /usr/local/lib/pins/host-settings /usr/bin/raspi-config
 
 # pinsdaemon: application + venv, and its helper scripts where the Debian
-# package installs them. Only the systemctl shim (PHD2 control) and the ASTAP
-# helpers are usable inside a container; see docker/README.md.
+# package installs them. Only the systemctl shim (PHD2 control), the ASTAP
+# helpers and the regional settings (host time zone and keyboard, through the
+# container's own manage-localization.sh) are usable inside a container; see
+# docker/README.md.
 COPY --from=pinsdaemon --chown=${PINSDAEMON_UID}:${PINSDAEMON_UID} /opt/pinsdaemon /opt/pinsdaemon
+COPY --chmod=755 docker/manage-localization.sh /usr/local/lib/pins/manage-localization.sh
 RUN set -eu; \
     for f in /opt/pinsdaemon/scripts/*; do \
       case "$f" in *.sh|*.py|*/pins-rig-name) install -m 755 "$f" /usr/local/bin/ ;; esac; \
-    done
+    done; \
+    install -m 755 /usr/local/lib/pins/manage-localization.sh /usr/local/bin/manage-localization.sh
 
 # ASTAP: CLI at the location pins expects by default. Star databases are not
 # bundled; /opt/astap (where ASTAP's database packages install) and

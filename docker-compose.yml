@@ -42,7 +42,12 @@ services:
    # if you prefer bridge networking.
     network_mode: host
     environment:
-      TZ: Europe/Berlin
+      # Time zone of the container. Without TZ it is the host's (read over
+      # D-Bus at start, see docker/README.md, "Host time zone and keyboard").
+      # TZ: Europe/Berlin
+      # Let Touch-N-Stars set the host clock when it differs from the
+      # browser's; that turns off NTP on the host.
+      # PINS_HOST_CLOCK_CONTROL: "true"
       # Start PHD2 (on the virtual X display) together with the container.
       PHD2_AUTOSTART: "true"
       # pinsdaemon system management API on port 8000.
@@ -65,8 +70,11 @@ services:
       # Host power control: the Touch-N-Stars "Shutdown" and "Restart" buttons
       # ask the host's logind over its system D-Bus socket to power off or
       # reboot the machine (pins and PHD2 are stopped cleanly first; needs
-      # `privileged`). Remove this line to leave the host alone; the buttons
-      # then report an error. See docker/README.md, "Host shutdown and reboot".
+      # `privileged`); the regional settings page shows and changes the host's
+      # time zone and keyboard layout through the same socket. Remove this
+      # line to leave the host alone; those then report an error. See
+      # docker/README.md, "Host shutdown and reboot" and "Host time zone and
+      # keyboard".
       - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro
     devices:
       - /dev/ttyUSB0:/dev/ttyUSB0      # serial mounts / accessories present at start

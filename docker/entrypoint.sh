@@ -95,6 +95,11 @@ if [ "$as_root" -eq 1 ]; then
   fi
   # PHD2 "enabled" state consulted by the systemctl shim (pinsdaemon).
   if [ "${PHD2_AUTOSTART:-true}" = "true" ]; then touch /run/pins/phd2.enabled; else rm -f /run/pins/phd2.enabled; fi
+  # Host time zone, keyboard and locale for pinsdaemon's regional settings,
+  # and the container's time zone (the host's unless TZ is set); setting the
+  # host clock only when allowed. See docker/host-settings.sh.
+  if [ "${PINS_HOST_CLOCK_CONTROL:-false}" = "true" ]; then touch /run/pins/host-clock-control; else rm -f /run/pins/host-clock-control; fi
+  /usr/local/lib/pins/host-settings startup || true
   chmod 755 /run/pins
 fi
 

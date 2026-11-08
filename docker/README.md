@@ -240,19 +240,23 @@ networking the X socket name is shared with the host, so the default `:99`
 avoids a desktop session on `:0`), `PINSDAEMON_AUTOSTART`,
 `PINSDAEMON_API_TOKEN` (bearer token; the default is the token the pinsdaemon
 Debian package ships), `PINS_USBFS_MEMORY_MB` (USB transfer buffer the
-entrypoint sets on a privileged container, see "USB devices"), `TZ`.
+entrypoint sets on a privileged container, see "USB devices"), `TZ` (the
+container's time zone; without it the container takes the host's, see "Host
+time zone and keyboard"), `PINS_HOST_CLOCK_CONTROL` (default `false`; let
+Touch-N-Stars set the host clock, same section).
 
 There is no systemd in the container. pinsdaemon manages PHD2 through
 `systemctl`, so `/usr/bin/systemctl` is a small shim that maps the `phd2`
 service operations onto supervisord (`docker/systemctl-shim.sh`); it is the
-only privileged command granted to `sysupdate-api` besides the ASTAP helper
-scripts (`docker/sudoers-pinsdaemon`). pinsdaemon endpoints that need the Pi
-operating system (system upgrade, Wi-Fi, hotspot, Samba, localisation, time
-setting, power/temperature readings, firmware installation) do not work in
-the container and return errors; `/health`, PHD2 status/control, the ASTAP
-database listing and the plugin/INDI package listings do. The Touch-N-Stars
-"Shutdown" and "Restart" buttons act on the host machine through another
-shim; see "Host shutdown and reboot".
+privileged commands granted to `sysupdate-api` are that shim, the ASTAP helper
+scripts and the regional settings (`docker/sudoers-pinsdaemon`). pinsdaemon
+endpoints that need the Pi operating system (system upgrade, Wi-Fi, hotspot,
+Samba, power/temperature readings, firmware installation) do not work in the
+container and return errors; `/health`, PHD2 status/control, the ASTAP
+database listing and the plugin/INDI package listings do. The regional
+settings (time zone and keyboard) and the Touch-N-Stars "Shutdown" and
+"Restart" buttons act on the host machine through shims; see "Host time zone
+and keyboard" and "Host shutdown and reboot".
 
 PHD2 keeps its profiles in `/home/pins/.phd2` (on the volume). Its window is
 not visible anywhere; use the Touch-N-Stars PHD2 pages or the server API.
@@ -409,6 +413,54 @@ Limitations: a Docker daemon with user namespace remapping maps the
 container's root to an unprivileged host user, and logind (polkit) then
 refuses the call; a host without systemd-logind cannot be controlled this
 way; delayed shutdowns (`shutdown -h +5`) and cancelling are not supported.
+
+## Host time zone and keyboard
+
+The Touch-N-Stars "Regional settings" page (pinsdaemon's `/system/localization`)
+shows and changes the host machine's settings, like it changes the Pi's own on
+a Raspberry Pi installation. pinsdaemon uses `timedatectl` and `localectl`,
+which need systemd; in the container they are a shim (`docker/host-settings.sh`)
+that asks the host's timedated and localed over the host's system D-Bus
+socket. It needs the same setup as host shutdown: the socket mounted and a
+privileged container, which `docker-compose.yml` has.
+
+| Field | In the container |
+| --- | --- |
+| Time zone | the host's; changing it changes the host's (`timedatectl set-timezone` on the host) |
+| Keyboard layout | the host's; changing it changes the host's (X11 layout and console keymap; model and options are kept) |
+| Locale | the host's `LANG`, shown only; change it on the host (`localectl set-locale`) |
+| Wi-Fi country | the host's Wi-Fi regulatory country, or the country of the host's time zone when none is set; shown only |
+
+Touch-N-Stars sends every field when the form is saved, so an unchanged locale
+or Wi-Fi country is accepted and a changed one fails before anything is
+applied (`docker/manage-localization.sh`). The keyboard layout and locale are
+read from the host when the container starts and after a change made here;
+a change made on the host directly shows after a container restart.
+
+The container's own time zone (pins, PHD2, log timestamps) is the host's: the
+entrypoint links `/etc/localtime` to the host's zone at start
+(`[pins] time zone ... (from the host)` in the container log). After the zone
+was changed in Touch-N-Stars, pins and PHD2 use it once the container has
+restarted. Setting `TZ` (`environment:` in `docker-compose.yml`) overrides
+this for the container; the regional settings page still shows and changes
+the host's zone. Bind mounts of `/etc/localtime` and `/etc/timezone` are not
+needed.
+
+Setting the clock: when the browser's clock and the host's differ by more
+than a minute, Touch-N-Stars offers to set the device time (`/system/time`).
+That turns off NTP on the host and sets its clock, which is right for a Pi
+without network time but rarely for a machine running Docker, so it fails in
+the container ("setting the host clock ... is disabled") unless
+`PINS_HOST_CLOCK_CONTROL=true` is set.
+
+Without the D-Bus socket or in an unprivileged container, the time zone shows
+the container's own zone and saving fails with an error that says why. To
+check a setup:
+
+```bash
+docker exec pins timedatectl status
+docker exec pins localectl status
+```
 
 ## Sky Simulator sidecar
 
